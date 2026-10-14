@@ -336,6 +336,56 @@ def render_lotes(kp: str = "lt") -> None:
 
 
 # =====================================================================
+# LOTES TERMINADOS (dentro de "Más")
+# =====================================================================
+def render_terminados(kp: str = "lterm") -> None:
+    """Todos los encierres cerrados, de todos los clientes. Es la base
+    de los informes y de los resultados para redes."""
+    um.estilos()
+    nav = _nav(kp)
+    if nav.get("lote"):
+        def volver():
+            nav.pop("lote", None)
+            st.rerun()
+        um.render_ficha(nav["lote"], volver, kp=kp, texto_volver="← Lotes terminados")
+        return
+    try:
+        lotes = [l for l in db.listar_lotes() if (l.get("estado") or "") != "activo"]
+    except Exception:
+        lotes = []
+    lotes.sort(key=lambda l: str(l.get("fecha_salida") or l.get("fecha_ingreso") or ""), reverse=True)
+    if not lotes:
+        st.info("Todavía no hay encierres terminados. Cuando cierres un lote desde su ficha, aparece acá.")
+        return
+    st.caption(f"{len(lotes)} encierres terminados. Solo datos medidos: días, peso de entrada y de salida.")
+    for l in lotes[:60]:
+        fi, fs = um._fecha(l.get("fecha_ingreso")), um._fecha(l.get("fecha_salida"))
+        dias = (fs - fi).days if fi and fs else None
+        res = ""
+        try:
+            pes = [p for p in (db.listar_pesadas(l["id"]) or []) if p.get("peso_promedio_kg")]
+        except Exception:
+            pes = []
+        if len(pes) >= 2:
+            f0, f1 = um._fecha(pes[0]["fecha"]), um._fecha(pes[-1]["fecha"])
+            p0, p1 = float(pes[0]["peso_promedio_kg"]), float(pes[-1]["peso_promedio_kg"])
+            if f0 and f1 and (f1 - f0).days > 0:
+                res = (f'{um._num(p0, 0)} → {um._num(p1, 0)} kg · '
+                       f'{um._num((p1 - p0) / (f1 - f0).days, 2)} kg/día')
+        st.markdown(
+            f'<div class="hm"><div class="hm-card"><div class="hm-h">{um._e(l.get("cliente_nombre"))}</div>'
+            f'<div class="hm-sub">{um._e(l.get("identificador"))} · {um._dm(fi)} → {um._dm(fs)}'
+            f'{f" · {dias} días" if dias else ""}</div>'
+            f'{f"<div class=hm-sub style=margin-top:4px><b>{res}</b></div>" if res else ""}'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Ver ficha", key=f"{kp}_ver_{l['id']}", width="stretch"):
+            nav["lote"] = l["id"]
+            st.rerun()
+
+
+# =====================================================================
 # Pestaña CLIENTES
 # =====================================================================
 def render_clientes(kp: str = "cl") -> None:

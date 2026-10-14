@@ -1850,16 +1850,16 @@ with st.sidebar:
 # ---------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------
-(tab_hoy, tab_lotes_m, tab_clientes_m, tab_mas) = st.tabs([
+(tab_hoy, tab_clientes_m, tab_mas) = st.tabs([
     ":material/home: Inicio",
-    ":material/grid_view: Lotes",
     ":material/groups: Clientes",
     ":material/more_horiz: Más",
 ])
 # Las pantallas anteriores quedan completas dentro de "Más".
 with tab_mas:
-    (tab_inicio, tab_clientes, tab_evo, tab_avanzado,
+    (tab_terminados, tab_inicio, tab_clientes, tab_evo, tab_avanzado,
      tab_ia, tab_config, tab_help) = st.tabs([
+        ":material/inventory_2: Lotes terminados",
         ":material/dashboard: Panel completo",
         ":material/folder_open: Clientes y lotes (completo)",
         ":material/monitoring: Evolución",
@@ -1895,12 +1895,12 @@ with tab_hoy:
         st.error(f"No se pudo armar la pantalla de inicio: {_e_hm}")
 
 # ------------------------- LOTES y CLIENTES (celular) -----------------
-with tab_lotes_m:
+with tab_terminados:
     try:
         from src import ui_gestion as _ui_gestion
-        _ui_gestion.render_lotes("lt")
+        _ui_gestion.render_terminados("lterm")
     except Exception as _e_lt:
-        st.error(f"No se pudo armar la pantalla de lotes: {_e_lt}")
+        st.error(f"No se pudo armar la lista de lotes terminados: {_e_lt}")
 
 with tab_clientes_m:
     try:
@@ -4892,7 +4892,7 @@ with tab_inicio:
                 if st.button("👉 Ir a Clientes/Lotes", key="qa_manual",
                               width="stretch"):
                     st.info(
-                        "Pestaña **Lotes** → **Ver ficha** del lote → botón **⚖ Pesada**."
+                        "**Inicio** → **Ver ficha** del lote → botón **⚖ Pesada**."
                     )
 
             with qa3:
@@ -4928,7 +4928,7 @@ with tab_inicio:
                 if st.button("👉 Ir a Historial", key="qa_hist",
                               width="stretch"):
                     st.info(
-                        "Pestaña **Lotes** → **Ver ficha**: ahí está la evolución "
+                        "**Inicio** → **Ver ficha**: ahí está la evolución "
                         "del peso, el alimento y los movimientos del lote."
                     )
 

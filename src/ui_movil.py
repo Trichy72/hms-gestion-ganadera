@@ -311,6 +311,11 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         unsafe_allow_html=True,
     )
 
+    if st.button("➕ Cargar encierre nuevo", key=f"{kp}_nuevo_enc", type="primary",
+                 width="stretch"):
+        from . import ui_gestion as _g
+        _g.dialog_encierre()
+
     if tareas:
         h = '<div class="hm"><div class="hm-lbl">PARA HOY</div>'
         for bg, fg, ico, tit, sub in tareas:
@@ -325,7 +330,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     st.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
                 unsafe_allow_html=True)
     if not datos:
-        st.info("No hay lotes activos. Cargá un encierre en la pestaña Lotes.")
+        st.info("No hay lotes activos. Cargá un encierre con el botón de arriba.")
     for d in datos:
         _tarjeta_lote(d)
         if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):

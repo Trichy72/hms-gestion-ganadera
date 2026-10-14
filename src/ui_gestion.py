@@ -91,6 +91,9 @@ def dialog_entrega(lote_id: int):
     except Exception:
         prods = []
     prods = [p for p in prods if p] + ["Otro producto"]
+    st.caption("Lo que facturás o remitís en la gestión pasa solo, todas las mañanas. "
+               "Cargalo acá solo si la entrega todavía no está en la gestión: cuando "
+               "aparezca la factura, se une con esta carga y no se cuenta dos veces.")
     with st.form("f_entrega"):
         f = st.date_input("Fecha de entrega", value=date.today(), format="DD/MM/YYYY")
         prod = st.selectbox("Producto", prods)

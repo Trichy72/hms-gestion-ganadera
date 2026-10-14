@@ -299,6 +299,19 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 "Sin control esta semana." if ctrl else "Todavía no tiene ningún control cargado.",
             ))
 
+    # Clima: solo clientes con lote activo (una consulta por hora).
+    try:
+        ids = tuple(sorted({d["lote"].get("cliente_id") for d in datos}))
+        for cli, al in _alertas_clima(ids):
+            tareas.append((
+                "#E3ECF7", "#2C5E9E", al.get("icono") or "☁",
+                f"{cli} · {al.get('titulo') or 'alerta de clima'}",
+                f"{al.get('cuando') or ''}. "
+                + ("; ".join((al.get("acciones") or [])[:2]) if al.get("acciones") else ""),
+            ))
+    except Exception as e:
+        log.info("ui_movil: clima: %s", e)
+
     n_anim = sum(d.get("animales") or 0 for d in datos)
     st.markdown(
         f'<div class="hm"><div class="hm-top">'
@@ -353,6 +366,35 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         for f, t in ag:
             h += f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div><div>{_e(t)}</div></div>'
         st.markdown(h + "</div></div>", unsafe_allow_html=True)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _alertas_clima(cliente_ids: tuple) -> list:
+    """Alertas de clima (frío, calor, barro) de los clientes con lote
+    activo. Devuelve [(cliente, alerta)] solo con severidad media o alta."""
+    from . import dashboard
+    clientes = [c for c in db.listar_clientes() if c.get("id") in cliente_ids]
+    res = dashboard._procesar_clima_clientes(clientes)
+    out = []
+    for c in res.get("consultadas", []):
+        vistos = set()
+        for al_lote in c.get("alertas_lotes") or []:
+            for al in al_lote.get("alertas") or []:
+                sev = str(al.get("severidad") or "").lower()
+                if sev in ("info", "ok", "baja", "verde", ""):
+                    continue
+                k = al.get("titulo")
+                if k in vistos:
+                    continue
+                vistos.add(k)
+                acc = al.get("acciones") or []
+                if acc and not isinstance(acc, list):
+                    acc = [str(acc)]
+                out.append((c.get("cliente"), {
+                    "icono": al.get("icono"), "titulo": al.get("titulo"),
+                    "cuando": al.get("cuando"), "acciones": [str(a) for a in acc],
+                }))
+    return out[:4]
 
 
 def _tarjeta_lote(d: Dict) -> None:

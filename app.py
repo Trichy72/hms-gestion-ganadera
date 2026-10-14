@@ -1693,6 +1693,8 @@ if _logo_path_hdr.exists():
 st.markdown(
     '<style>'
     '.block-container{padding-top:3.4rem !important;}'
+    '[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],'
+    '[data-testid="stExpandSidebarButton"]{display:none !important;}'
     '@media (max-width:640px){.block-container{padding-left:.8rem !important;'
     'padding-right:.8rem !important;}}'
     '</style>'
@@ -1857,17 +1859,16 @@ with st.sidebar:
 ])
 # Las pantallas anteriores quedan completas dentro de "Más".
 with tab_mas:
-    (tab_terminados, tab_inicio, tab_clientes, tab_evo, tab_avanzado,
-     tab_ia, tab_config, tab_help) = st.tabs([
+    (tab_terminados, tab_clientes, tab_config, tab_help) = st.tabs([
         ":material/inventory_2: Lotes terminados",
-        ":material/dashboard: Panel completo",
-        ":material/folder_open: Clientes y lotes (completo)",
-        ":material/monitoring: Evolución",
-        ":material/science: Análisis",
-        ":material/neurology: Asesor IA",
+        ":material/folder_open: Dietas y carga completa",
         ":material/settings: Configuración",
         ":material/help: Ayuda",
     ])
+# Pantallas que se sacaron el 14/10/2026 (el panel viejo repetía Inicio;
+# Evolución y Análisis están en la ficha de cada lote; el Asesor IA no
+# se usa). El código queda por si hay que volver atrás: poner True.
+_PANTALLAS_VIEJAS = False
 
 
 # ------------------------- INICIO (celular) ---------------------------
@@ -1911,7 +1912,7 @@ with tab_clientes_m:
 
 
 # ----------------------------- INICIO ---------------------------------
-with tab_inicio:
+if _PANTALLAS_VIEJAS:
     kpis = dashboard.calcular_kpis()
 
     # ── Prioridades de hoy ──
@@ -12880,7 +12881,7 @@ with tab_clientes:
                     # expanders de configuración secundarios.
 
 # --------------------------- EVOLUCIÓN --------------------------------
-with tab_evo:
+if _PANTALLAS_VIEJAS:
     st.markdown(
         "### Evolución del lote (ADG y eficiencia)\n"
         "La **ganancia diaria de peso (ADG)** es el indicador que muestra si la "
@@ -13045,7 +13046,7 @@ with tab_evo:
 
 
 # ----------------------- ANÁLISIS AVANZADO ----------------------------
-with tab_avanzado:
+if _PANTALLAS_VIEJAS:
     st.markdown(
         "### Análisis estadístico del lote\n"
         "Toma una pesada con **pesos individuales** (las que genera el drone "
@@ -13192,7 +13193,7 @@ with tab_avanzado:
 # DOS formas de operar: (1) el formulario visual de acá, o (2) el
 # chat conversacional del Asesor IA que invoca las mismas funciones.
 # Cada forma sirve para distintos momentos del trabajo del asesor.
-with tab_avanzado:
+if _PANTALLAS_VIEJAS:
     st.divider()
     st.markdown(
         "### 🍽️ Formulación de dieta de mínimo costo\n"
@@ -13975,7 +13976,7 @@ with tab_avanzado:
 
 
 # ----------------------------- ASESOR IA ------------------------------
-with tab_ia:
+if _PANTALLAS_VIEJAS:
     st.markdown(
         "### 🤖 Asesor Nutricional IA\n"
         "Agente formulador de raciones con conocimiento de NASEM 2016 + práctica "
@@ -14940,16 +14941,13 @@ with tab_ia:
 with tab_config:
     st.markdown("### ⚙️ Configuración técnica del sistema")
     st.caption(
-        "Acá editás los datos que el agente IA usa internamente para "
-        "formular dietas y dar recomendaciones. Vos dejás todo cargado "
-        "una vez y el agente se ocupa del resto."
+        "Ingredientes, categorías, marca y los avisos por email y "
+        "WhatsApp. Se carga una vez y queda."
     )
 
-    (sub_ings, sub_cats, sub_mem, sub_marca,
-     sub_drone, sub_email, sub_whatsapp) = st.tabs([
+    (sub_ings, sub_cats, sub_marca, sub_drone, sub_email, sub_whatsapp) = st.tabs([
         "🌾 Ingredientes",
         "🐄 Categorías de animales",
-        "🧠 Memoria del agente",
         "🎨 Marca HMS",
         "📐 Calibración drone",
         "📧 Alertas por email",
@@ -15187,7 +15185,7 @@ with tab_config:
                     st.error(str(_e))
 
     # ---- Sub-tab: Memoria del agente ----
-    with sub_mem:
+    if _PANTALLAS_VIEJAS:
         st.markdown(
             "Acá enseñás cosas al agente que se aplican en TODAS las "
             "conversaciones futuras. Correcciones técnicas, valores típicos "
@@ -16088,9 +16086,15 @@ with tab_help:
 
 El sistema son **dos aplicaciones que comparten la misma base de datos**:
 
-- **Esta app (online)** — gestión: clientes, lotes, dietas, alertas
-  climáticas, ficha clínica, Asesor IA e historial. Se usa desde
-  cualquier navegador, incluido el celular en el campo.
+- **Esta app (online)** — gestión: clientes, lotes, dietas, pesadas,
+  entregas de alimento y alertas. Se usa desde cualquier navegador,
+  incluido el celular en el campo.
+  - **Inicio:** lo que hay que mirar hoy, los lotes activos y la agenda.
+    Cada lote tiene su **ficha** (peso, alimento, ración, controles) con
+    botones para cargar pesada, entrega, movimiento o cerrar el lote.
+  - **Clientes:** datos de cada cliente y sus lotes, activos y anteriores.
+  - **Más:** lotes terminados, dietas y carga completa, configuración y
+    esta ayuda.
 
 - **HMS Drone (local, en la Mac)** — procesamiento de las recorridas:
   cuenta animales y estima pesos a partir de las fotos y videos del
@@ -16112,13 +16116,12 @@ guarda ahí, y aparece al instante en esta app.
 3. **Guardás en la ficha** del cliente y lote correspondiente, desde la
    misma app local.
 
-4. **Consultás acá**: la pesada aparece en **Evolución** (ADG,
-   conversión alimenticia, uniformidad), en **Historial** y queda
-   disponible para el **Asesor IA**.
+4. **Consultás acá**: la pesada aparece en la **ficha del lote**, con la
+   ganancia diaria y, si trae el peso de cada animal, la uniformidad.
 
-También podés cargar pesadas de balanza a mano, en
-**Clientes y lotes → Cargar pesada manual**. Para el cálculo de ADG da lo
-mismo de dónde venga el dato.
+También podés cargar pesadas de balanza a mano desde la ficha del lote
+(botón **⚖ Pesada**). Para la ganancia diaria da lo mismo de dónde venga
+el dato.
 
 ### Qué precisión esperar
 

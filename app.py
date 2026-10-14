@@ -53,7 +53,13 @@ def cargar_api_key_persistida() -> str:
             return API_KEY_FILE.read_text(encoding="utf-8").strip()
         except Exception:
             return ""
-    return os.environ.get("ANTHROPIC_API_KEY", "")
+    _env = os.environ.get("ANTHROPIC_API_KEY", "")
+    if _env:
+        return _env
+    try:
+        return str(st.secrets.get("ANTHROPIC_API_KEY", "") or "")
+    except Exception:
+        return ""
 
 
 def guardar_api_key(key: str) -> None:
@@ -1455,7 +1461,69 @@ st.set_page_config(
     page_title="HMS Nutrición Animal — Sistema integrado",
     page_icon="🐄",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
+
+
+# ── Acceso con clave ──
+# La app está publicada en internet: sin esto, cualquiera con el link
+# ve clientes, CUIT, mails y teléfonos. La clave se guarda como hash
+# (nunca en texto) en preferencias_app → 'app_password_hash' con el
+# formato "salt_hex$hash_hex" (PBKDF2-SHA256, 200.000 vueltas).
+# Al entrar se agrega ?acceso=<token> a la URL: si Mauri guarda ese
+# link en el celular, no tiene que volver a escribir la clave.
+def _acceso_ok() -> bool:
+    import hmac as _hmac
+    import secrets as _secrets
+
+    if st.session_state.get("_acceso_ok"):
+        return True
+    try:
+        _hash_guardado = db.leer_preferencia("app_password_hash", "") or ""
+        _token_guardado = db.leer_preferencia("app_token", "") or ""
+    except Exception:
+        _hash_guardado, _token_guardado = "", ""
+    if not _hash_guardado:
+        # Sin clave configurada: no bloquear (evita dejar a Mauri
+        # afuera si la preferencia todavía no se cargó).
+        return True
+
+    _tok_url = st.query_params.get("acceso", "")
+    if _token_guardado and _tok_url and _hmac.compare_digest(
+            _tok_url, _token_guardado):
+        st.session_state["_acceso_ok"] = True
+        return True
+
+    st.markdown("### 🔒 HMS Nutrición Animal")
+    with st.form("form_acceso"):
+        _clave = st.text_input("Clave de acceso", type="password")
+        _entrar = st.form_submit_button("Entrar")
+    if _entrar:
+        try:
+            _salt_hex, _hash_hex = _hash_guardado.split("$", 1)
+            _calc = hashlib.pbkdf2_hmac(
+                "sha256", _clave.encode("utf-8"),
+                bytes.fromhex(_salt_hex), 200_000,
+            ).hex()
+        except Exception:
+            _calc = ""
+        if _calc and _hmac.compare_digest(_calc, _hash_hex):
+            st.session_state["_acceso_ok"] = True
+            if not _token_guardado:
+                _token_guardado = _secrets.token_urlsafe(24)
+                try:
+                    db.guardar_preferencia("app_token", _token_guardado)
+                except Exception:
+                    pass
+            st.query_params["acceso"] = _token_guardado
+            st.rerun()
+        else:
+            st.error("Clave incorrecta.")
+    return False
+
+
+if not _acceso_ok():
+    st.stop()
 
 # ── Persistencia de navegación en URL (sobrevive a F5/Cmd+R) ──
 # Si la URL tiene ?lote_id=X, restaurar el modo drill-down al lote
@@ -1776,40 +1844,9 @@ with st.sidebar:
             "Subí al menos uno (preferentemente el blanco para el header)."
         )
 
-    st.divider()
-    st.subheader("🤖 Asesor IA")
-    # La primera vez en esta sesión, cargar key persistida del disco
-    if "api_key_input" not in st.session_state:
-        st.session_state["api_key_input"] = cargar_api_key_persistida()
-
-    api_key = st.text_input(
-        "Claude API Key",
-        type="password",
-        key="api_key_input",
-        help="Se guarda en data/.api_key (local, permiso 600). "
-             "Persiste entre refreshes y reinicios. Para borrarla, "
-             "tocá el botón.",
-    )
-
-    col_api1, col_api2 = st.columns(2)
-    if col_api1.button("💾 Guardar key", width="stretch",
-                        disabled=not api_key):
-        guardar_api_key(api_key)
-        st.success("✅ Guardada en disco")
-    if col_api2.button("🗑️ Borrar key", width="stretch"):
-        guardar_api_key("")
-        st.session_state["api_key_input"] = ""
-        st.rerun()
-
-    if api_key:
-        # Verificación visual del formato
-        if api_key.startswith("sk-ant-") and len(api_key) > 80:
-            st.caption(f"✅ Key cargada ({len(api_key)} chars)")
-        else:
-            st.warning(
-                f"⚠️ Formato sospechoso ({len(api_key)} chars). "
-                "Una key válida empieza con `sk-ant-` y tiene ~108 chars."
-            )
+    # La clave de Claude ya no se muestra en pantalla: se toma de los
+    # secretos de Streamlit (ANTHROPIC_API_KEY) o del archivo local.
+    api_key = cargar_api_key_persistida()
 
     # Versión "estable" para uso en otros tabs
     st.session_state["anthropic_api_key"] = api_key

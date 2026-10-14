@@ -245,6 +245,12 @@ _CSS = f"""
 .hm-tile .n {{ font-size: 11px; color: var(--hm-sub); letter-spacing: .6px; }}
 .hm-tile .f {{ font-size: 11px; color: var(--hm-sub); margin-top: 2px; }}
 .hm-hero .hm-kgrid {{ margin-top: 6px; }}
+.hm-semi {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }}
+.hm-semi .sc {{ border-radius: 14px; padding: 12px 14px; border: 1px solid var(--hm-line); background: var(--hm-card); }}
+.hm-semi .sk {{ display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--hm-sub); }}
+.hm-semi .sd {{ width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }}
+.hm-semi .sv {{ font-size: 26px; font-weight: 700; color: var(--hm-txt); margin-top: 4px; }}
+.hm-semi .sw {{ font-size: 13px; color: var(--hm-sub); margin-top: 2px; line-height: 1.35; }}
 .hm-hlbl {{ margin-top: 14px; font-size: 11px; letter-spacing: .08em; color: #C9D8CC; font-weight: 600; }}
 .hm-hero .hm-tile {{ background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }}
 .hm-hero .hm-tile .n, .hm-hero .hm-tile .f {{ color: #C9D8CC; }}
@@ -329,18 +335,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             ))
         ctrl = d.get("control")
         f_ctrl = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
-        gen = ((ctrl or {}).get("semaforo_general") or "").lower()
-        if gen in ("rojo", "amarillo") and f_ctrl and (hoy - f_ctrl).days <= 7:
-            malas = [n for a, n in (("sanidad", "sanidad"), ("consumo", "consumo"),
-                                    ("ambiente", "ambiente"), ("alimento", "alimento"))
-                     if ((ctrl or {}).get("semaforo_" + a) or "").lower() in ("rojo", "amarillo")]
-            fg_c, bg_c = ESTADO_COLOR[gen]
-            tareas.insert(0, (
-                bg_c, fg_c, "!",
-                f"{d['cliente']} · control en {gen}",
-                f"Del {_dm(f_ctrl)}: revisar {', '.join(malas)}."
-                + (f" {ctrl.get('comentarios')}" if ctrl.get("comentarios") else ""),
-            ))
+        # Los colores del control van en el semáforo, no acá.
         try:
             _cli = db.obtener_cliente(d["lote"].get("cliente_id")) or {}
             if not (_cli.get("whatsapp") or "").strip():
@@ -351,12 +346,6 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 ))
         except Exception:
             pass
-        if ctrl and f_ctrl and (hoy - f_ctrl).days > 7:
-            tareas.append((
-                "var(--hm-chip)", "var(--hm-sub)", "✓",
-                f"{d['cliente']} · control semanal",
-                f"El último control es del {_dm(f_ctrl)}.",
-            ))
 
     # Clima: solo clientes con lote activo (una consulta por hora).
     try:
@@ -432,6 +421,11 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         f'</div></div>',
         unsafe_allow_html=True,
     )
+
+    try:
+        _semaforos_inicio(datos, hoy)
+    except Exception as e:
+        log.info("ui_movil: semaforos: %s", e)
 
     col_a, col_b = st.columns([1.15, 1], gap="medium")
     with col_a:
@@ -511,6 +505,43 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     if c_b.button("➕ Encierre nuevo", key=f"{kp}_nuevo_enc", type="primary", width="stretch"):
         from . import ui_gestion as _g
         _g.dialog_encierre()
+
+
+def _semaforos_inicio(datos: List[Dict], hoy: date) -> None:
+    """Cómo están los lotes según el último control semanal (de los
+    últimos 7 días). Rojo y amarillo con nombre; verde solo la cantidad."""
+    grupos = {"rojo": [], "amarillo": [], "verde": [], "sin": []}
+    for d in datos:
+        ctrl = d.get("control") or {}
+        f = _fecha(ctrl.get("fecha_respuesta") or ctrl.get("fecha_envio"))
+        color = (ctrl.get("semaforo_general") or "").lower()
+        if f and (hoy - f).days <= 7 and color in grupos:
+            # qué área lo puso en ese color
+            areas = [n for k, n in (("sanidad", "sanidad"), ("consumo", "consumo"),
+                                    ("ambiente", "ambiente"), ("alimento", "alimento"))
+                     if (ctrl.get(f"semaforo_{k}") or "").lower() == color]
+            grupos[color].append(d["cliente"] + (f" ({', '.join(areas)})" if color != "verde" and areas else ""))
+        else:
+            grupos["sin"].append(d["cliente"])
+
+    def _lista(xs, n=4):
+        return ", ".join(xs[:n]) + (f" y {len(xs) - n} más" if len(xs) > n else "")
+
+    cajas = [
+        ("#C62828", "URGENTE", grupos["rojo"], _lista(grupos["rojo"]) or "Ninguno"),
+        ("#E0A100", "PARA MIRAR", grupos["amarillo"], _lista(grupos["amarillo"]) or "Ninguno"),
+        ("#2E7D32", "BIEN", grupos["verde"],
+         "lotes sin problemas" if grupos["verde"] else "Ninguno todavía"),
+        ("#9E9E9E", "SIN CONTROL ESTA SEMANA", grupos["sin"],
+         (_lista(grupos["sin"]) + ". Cargá el control desde la ficha o esperá el WhatsApp.")
+         if grupos["sin"] else "Todos respondieron"),
+    ]
+    h = '<div class="hm"><div class="hm-lbl">SEMÁFORO DE LOS CORRALES · CONTROL SEMANAL</div><div class="hm-semi">'
+    for col, tit, xs, txt in cajas:
+        h += (f'<div class="sc" style="border-left:5px solid {col}">'
+              f'<div class="sk"><span class="sd" style="background:{col}"></span>{tit}</div>'
+              f'<div class="sv">{len(xs)}</div><div class="sw">{_e(txt)}</div></div>')
+    st.markdown(h + "</div></div>", unsafe_allow_html=True)
 
 
 def _precio_kg(e: Dict) -> Optional[float]:

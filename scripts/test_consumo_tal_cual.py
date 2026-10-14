@@ -48,7 +48,9 @@ def check(nombre, obtenido, esperado, tol=0.01):
 
 
 def nuevo_lote(nombre_cli, ident, cantidad, fecha_ingreso="2026-05-01",
-               peso=300, adpv=1.0):
+               peso=300, adpv=0):
+    # adpv=0 por defecto: estos casos prueban la mecánica de la dieta,
+    # sin escala por peso vivo (esa tiene su sección propia, la 11).
     cid = db.crear_cliente(nombre_cli)
     lid = db.crear_lote(
         cid, ident, fecha_ingreso=fecha_ingreso,
@@ -89,7 +91,7 @@ print("  " + "-" * 60)
 
 peor_viejo, peor_nuevo = 0.0, 0.0
 for (cli, ident, cant, f_dieta, dmi, prod, pct, kgtc, real) in PRODUCCION:
-    cid, lid = nuevo_lote(cli, ident, cant)
+    cid, lid = nuevo_lote(cli, ident, cant, adpv=1.0)
     db.guardar_dieta(
         lid, f_dieta,
         [{"nombre": prod, "pct_ms": pct, "kg_tal_cual": kgtc}],
@@ -336,6 +338,35 @@ else:
 # El mismo lote con la fórmula vieja habría dado 5.0 × 14% = 0,7 kg/animal
 # = 35 kg/día, o sea 500 kg restantes y 14 días: 6 días de más.
 print("  (con la fórmula vieja daba 35 kg/día → 14 días: 6 de más)")
+
+
+# =====================================================================
+print("\n11. Escala por peso vivo (ración formulada para el peso del día)")
+print("=" * 70)
+
+# Caso Atilio: dieta del 09/10 a 1,38 kg/cab; pesadas 11/09 = 315,4 y
+# 11/10 = 347,06 (ganancia medida 1,055 kg/día). Sin ADPV objetivo.
+cid, lid = nuevo_lote("PesoVivo SA", "L1", 32, fecha_ingreso="2026-09-11")
+db.guardar_pesada(lid, "2026-09-11", "balanza", 32, 315.4, 10093, None)
+db.guardar_pesada(lid, "2026-10-11", "balanza", 32, 347.06, 11106, None)
+db.guardar_dieta(lid, "2026-10-09",
+                 [{"nombre": "Fibrogreen", "pct_ms": 12.0, "kg_tal_cual": 1.38}])
+p_dieta = 315.4 + 31.66 / 30 * 28          # interpolado entre balanzas
+p_hoy = 347.06 + 31.66 / 30 * 3
+info = sp.calcular_consumo_diario_kg(lid, "Fibrogreen",
+                                     fecha_referencia="2026-10-14")
+check("factor = peso hoy / peso del día de la dieta",
+      info["factor_peso_vivo"], p_hoy / p_dieta, tol=0.002)
+check("kg/día escalado", info["kg_dia"], 1.38 * 32 * p_hoy / p_dieta, tol=0.05)
+info = sp.calcular_consumo_diario_kg(lid, "Fibrogreen",
+                                     fecha_referencia="2026-10-09")
+check("el día de la dieta no escala", info["factor_peso_vivo"], 1.0, tol=0.0001)
+# Sin pesadas ni ADPV: igual que antes (factor 1)
+cid, lid = nuevo_lote("SinPeso SA", "L1", 10)
+db.guardar_dieta(lid, "2026-06-01",
+                 [{"nombre": "Fibrogreen", "pct_ms": 12.0, "kg_tal_cual": 1.0}])
+check("sin datos de peso no escala", sp.calcular_consumo_diario_kg(
+    lid, "Fibrogreen", fecha_referencia="2026-07-31")["kg_dia"], 10.0)
 
 # =====================================================================
 print("\n" + "=" * 70)

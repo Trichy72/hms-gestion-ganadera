@@ -154,7 +154,16 @@ def contexto_lote(lote_id: int) -> Dict:
         "lote": db.obtener_lote(lote_id),
         "dietas": db.listar_dietas(lote_id),
         "cant": db.contexto_cantidad_lote(lote_id),
+        "pesadas": _pesadas_seguras(lote_id),
     }
+
+
+def _pesadas_seguras(lote_id: int) -> List[Dict]:
+    from . import database as db
+    try:
+        return db.listar_pesadas(lote_id) or []
+    except Exception:
+        return []
 
 
 def _item_dieta_producto(
@@ -208,8 +217,9 @@ def calcular_consumo_diario_kg(
     Contra los valores que Mauricio validó a campo el 30/07/2026,
     `kg_tal_cual` se desvía entre 3% y 8%; la fórmula vieja se desviaba
     entre −21% y +72%. Ese resto de 3-8% es el escalado por peso vivo,
-    que se resuelve aparte (ver `factor_escala_consumo_pv`, que hoy solo
-    aplica el camino de la carga de silocomedero).
+    que desde el 14/10/2026 se aplica acá: los kg de la dieta se
+    multiplican por peso estimado del día / peso estimado el día de la
+    dieta (ganancia medida entre pesadas, o la objetivo).
 
     Si el lote tiene plan de adaptación (varias dietas con distintas
     fechas de inicio), se usa la dieta vigente en `fecha_referencia`.
@@ -309,6 +319,28 @@ def calcular_consumo_diario_kg(
         if dmi_dieta and dmi_dieta > 0:
             kg_tc_animal *= dmi_kg_dia_override / dmi_dieta
 
+    # Escala por peso vivo: la ración se formuló para el peso que
+    # tenían el día de la dieta; si hoy pesan más, comen en proporción
+    # (mismo % del peso vivo). Ganancia medida entre pesadas o, si no
+    # hay, la objetivo. Sin datos para proyectar, factor 1.
+    factor_pv, peso_est = 1.0, None
+    if dieta_v and dieta_v.get("fecha"):
+        try:
+            _pes = ctx.get("pesadas")
+            if _pes is None:
+                _pes = _pesadas_seguras(lote_id)
+            p_ref = estimar_peso_vivo_lote(
+                lote, str(dieta_v["fecha"])[:10], pesadas=_pes)
+            p_hoy = estimar_peso_vivo_lote(
+                lote, fecha_referencia[:10], pesadas=_pes)
+            if p_ref and p_ref > 0 and p_hoy and p_hoy > 0:
+                peso_est = p_hoy
+                factor_pv = max(_FACTOR_ESCALA_MIN,
+                                min(_FACTOR_ESCALA_MAX, p_hoy / p_ref))
+        except Exception:
+            factor_pv = 1.0
+    kg_tc_animal *= factor_pv
+
     # Materia seca implícita: si el DMI y el % de la dieta fueran
     # coherentes con los kg tal cual, esto tendría que dar entre 80% y
     # 100%. Arriba de 100% es imposible y delata una dieta mal cargada
@@ -329,6 +361,8 @@ def calcular_consumo_diario_kg(
         "ms_implicita_pct": ms_impl,
         "fase_vigente": fase_vigente,
         "fecha_referencia": fecha_referencia,
+        "factor_peso_vivo": round(factor_pv, 4),
+        "peso_estimado_kg": round(peso_est, 1) if peso_est else None,
     }
 
 
@@ -1072,6 +1106,7 @@ def _adpv_para_proyectar(
 
 def estimar_peso_vivo_lote(
     lote: Dict, fecha_ref: Optional[str] = None,
+    pesadas: Optional[List[Dict]] = None,
 ) -> float:
     """Estima el peso vivo promedio del lote a `fecha_ref`.
 
@@ -1105,27 +1140,44 @@ def estimar_peso_vivo_lote(
     if not fecha_ref:
         fecha_ref = _dt.now().strftime("%Y-%m-%d")
     # 1) Pesadas
-    try:
-        pesadas = db.listar_pesadas(lote["id"])
-    except Exception:
-        pesadas = []
+    if pesadas is None:
+        try:
+            pesadas = db.listar_pesadas(lote["id"])
+        except Exception:
+            pesadas = []
     if pesadas:
         try:
             f_ref = _dt.strptime(fecha_ref, "%Y-%m-%d").date()
         except Exception:
             f_ref = None
         pesadas_validas = []
+        posteriores = []
         for p in pesadas:
             pp = float(p.get("peso_promedio_kg") or 0)
             if pp <= 0:
                 continue
-            fp_raw = (p.get("fecha") or "")[:10]
+            fp_raw = str(p.get("fecha") or "")[:10]
             try:
                 fp = _dt.strptime(fp_raw, "%Y-%m-%d").date()
             except Exception:
                 fp = None
             if f_ref is None or fp is None or fp <= f_ref:
                 pesadas_validas.append((fp, pp))
+            else:
+                posteriores.append((fp, pp))
+        # Fecha entre dos pesadas: se interpola entre las dos balanzas.
+        # Es lo que pasa con el cálculo hacia atrás (consumo de días ya
+        # pasados): si no, el peso quedaba congelado en la pesada
+        # anterior y al llegar la nueva el consumo saltaba de golpe.
+        if pesadas_validas and posteriores and f_ref is not None:
+            pesadas_validas.sort(key=lambda x: x[0] or _dt.min.date())
+            posteriores.sort(key=lambda x: x[0])
+            f_a, p_a = pesadas_validas[-1]
+            f_b, p_b = posteriores[0]
+            if f_a is not None and (f_b - f_a).days >= _DIAS_MIN_ENTRE_PESADAS:
+                adpv_tramo = (p_b - p_a) / (f_b - f_a).days
+                if _ADPV_MEDIDO_MIN <= adpv_tramo <= _ADPV_MEDIDO_MAX:
+                    return p_a + adpv_tramo * (f_ref - f_a).days
         if pesadas_validas:
             pesadas_validas.sort(key=lambda x: x[0] or _dt.min.date())
             f_ult, peso_ult = pesadas_validas[-1]
@@ -1206,11 +1258,10 @@ def factor_escala_consumo_pv(
         "factor_aplicado": 1.0,
     }
 
-    adpv = float(lote.get("adpv_objetivo_kg") or 0)
-    if adpv <= 0:
-        info["origen"] = "sin_adg"
-        return 1.0, info
-
+    # Antes se exigía `adpv_objetivo_kg`. Ahora alcanza con que el peso
+    # se pueda proyectar (pesadas con ganancia medida u objetivo): si no
+    # se puede, el peso de la dieta y el de hoy dan igual y el factor
+    # queda en 1.
     fecha_dieta_raw = (dieta.get("fecha") or "")[:10]
     if not fecha_dieta_raw:
         info["origen"] = "sin_fecha_dieta"
@@ -1236,6 +1287,11 @@ def factor_escala_consumo_pv(
         info["dias_desde_dieta"] = max(0, (fr - fd).days)
     except Exception:
         pass
+
+    if (abs(peso_act - peso_ref) < 1e-9
+            and float(lote.get("adpv_objetivo_kg") or 0) <= 0):
+        info["origen"] = "sin_adg"
+        return 1.0, info
 
     factor_bruto = peso_act / peso_ref
     factor = max(_FACTOR_ESCALA_MIN, min(_FACTOR_ESCALA_MAX, factor_bruto))

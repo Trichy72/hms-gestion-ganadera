@@ -187,10 +187,10 @@ check("pesada de hoy → sin proyección", sp.estimar_peso_vivo_lote(
 cid, lid = nuevo_lote("Futura SA", fecha_ingreso="2026-05-01",
                       peso=300, adpv=1.0)
 pesar(lid, "2026-06-01", 340)
-pesar(lid, "2026-12-01", 500)      # posterior a la referencia: se ignora
+pesar(lid, "2026-12-01", 500)      # posterior: se interpola entre las dos
 lote = db.obtener_lote(lid)
-check("la pesada futura no se usa", sp.estimar_peso_vivo_lote(
-    lote, "2026-07-31"), 400.0)     # 340 + 1,0 × 60
+check("entre dos pesadas se interpola", sp.estimar_peso_vivo_lote(
+    lote, "2026-07-31"), 340 + 160 / 183 * 60, tol=0.1)
 
 # =====================================================================
 print("\n8. El techo del factor sigue vigente")

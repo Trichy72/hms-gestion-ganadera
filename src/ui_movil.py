@@ -221,6 +221,10 @@ _CSS = f"""
 .hm-ag {{ display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid var(--hm-bar); font-size: 14px; }}
 .hm-ag:first-child {{ border-top: 0; }}
 .hm-ag .d {{ width: 70px; font-weight: 700; color: var(--hm-acc); flex-shrink: 0; }}
+.hm-kgrid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0 4px; }}
+.hm-tile {{ margin-bottom: 0; padding: 12px 14px; }}
+.hm-tile .n {{ font-size: 11px; color: var(--hm-sub); letter-spacing: .6px; }}
+.hm-tile .f {{ font-size: 11px; color: var(--hm-sub); margin-top: 2px; }}
 .hm-tl {{ display: grid; grid-template-columns: 0.9fr 1.05fr 1.15fr 0.9fr 1fr; gap: 4px; margin-top: 8px; }}
 .hm-tl .b {{ height: 6px; border-radius: 3px; }}
 .hm-tl .x {{ font-size: 10.5px; letter-spacing: -.2px; overflow-wrap: normal; word-break: keep-all; color: #C9D8CC; margin-top: 5px; line-height: 1.25; }}
@@ -532,112 +536,6 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
         unsafe_allow_html=True,
     )
 
-    # Peso
-    try:
-        adpv_proy = lote.get("adpv_objetivo_kg") or d.get("adpv")
-        hasta = d.get("proxima_pesada")
-        sub = ""
-        if d.get("adpv") is not None:
-            sub = (f'+{_num(d.get("ganancia"))} kg en {d.get("dias_entre")} días · '
-                   f'<b>{_num(d["adpv"], 2)} kg/día</b>')
-        leyenda_proy = (
-            f'estimado a {_num(adpv_proy, 2)} kg/día'
-            + (" (objetivo)" if lote.get("adpv_objetivo_kg") else " (última ganancia medida)")
-        ) if adpv_proy else ""
-        st.markdown(
-            '<div class="hm"><div class="hm-lbl">PESO DEL LOTE · kg promedio</div><div class="hm-card">'
-            f'<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">'
-            f'<div class="hm-big" style="font-size:36px">{_num(d["peso"]) if d["peso"] else "—"}</div>'
-            f'<div class="hm-sub">{sub}</div></div>'
-            f'{_grafico_peso(d["pesadas"], adpv_proy, hasta)}'
-            f'<div class="hm-sub">Línea llena: balanza. Línea cortada: {leyenda_proy}.</div>'
-            + "".join(
-                f'<div class="hm-nota">{_dm(_fecha(p["fecha"]))}: {_e(p.get("notas"))}</div>'
-                for p in d["pesadas"][-2:] if p.get("notas")
-            )
-            + '</div></div>',
-            unsafe_allow_html=True,
-        )
-    except Exception as e:
-        st.caption(f"No se pudo dibujar el peso: {e}")
-
-    # Control semanal
-    try:
-        ctrl = d.get("control")
-        areas = [("Sanidad", "semaforo_sanidad"), ("Consumo", "semaforo_consumo"),
-                 ("Ambiente", "semaforo_ambiente"), ("Alimento", "semaforo_alimento")]
-        sem = ""
-        for nom, campo in areas:
-            est = ((ctrl or {}).get(campo) or "gris").lower()
-            fg, bg = ESTADO_COLOR.get(est, ESTADO_COLOR["gris"])
-            sem += f'<div><div class="c" style="background:{bg};border:2px solid {fg}"></div><div class="hm-sub">{nom}</div></div>'
-        f_c = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
-        cab = f"respondido el {_dm(f_c)}" if ctrl else "pendiente"
-        txt = (_e(ctrl.get("comentarios")) if ctrl and ctrl.get("comentarios")
-               else "Cuando lleguen las respuestas del productor se pintan en verde, amarillo o rojo.")
-        st.markdown(
-            f'<div class="hm"><div class="hm-lbl">ÚLTIMO CONTROL SEMANAL · {cab}</div>'
-            f'<div class="hm-card"><div class="hm-sem">{sem}</div>'
-            f'<div class="hm-nota">{txt}</div></div></div>',
-            unsafe_allow_html=True,
-        )
-    except Exception as e:
-        st.caption(f"No se pudo mostrar el control: {e}")
-
-    # Alimento
-    try:
-        h = '<div class="hm"><div class="hm-lbl">ALIMENTO</div><div class="hm-card">'
-        if d["stock"]:
-            for s in d["stock"]:
-                dias = s.get("dias_restantes")
-                fg, _ = ESTADO_COLOR[_estado_stock(dias)]
-                pct = 0 if dias is None else max(4, min(100, float(dias) / 30 * 100))
-                h += (
-                    '<div style="display:flex;justify-content:space-between;font-size:14px;margin-top:4px">'
-                    f'<span style="font-weight:600">{_e(s["producto"])}</span>'
-                    f'<span style="color:{fg};font-weight:700">{_texto_dias(dias)} · ~{_num(s.get("kg_restantes_hoy"), 0)} kg</span></div>'
-                    f'<div class="hm-bar"><div style="width:{pct:.0f}%;background:{fg}"></div></div>'
-                    f'<div class="hm-sub" style="margin-top:4px">Calculado: entregas menos consumo según la dieta de cada día '
-                    f'({_num(s.get("consumo_diario_kg"), 0)} kg/día hoy).</div>'
-                )
-        else:
-            h += '<div class="hm-sub">Sin entregas de HMS para este lote.</div>'
-        ent = db.listar_entregas_lote(lote_id) or []
-        if ent:
-            h += '<table class="hm-tab" style="margin-top:8px"><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th></tr>'
-            for e in ent[:8]:
-                cant = (f'{_num(e.get("cantidad_bolsas"), 0)} bolsas · ' if e.get("cantidad_bolsas") else "") + f'{_num(e.get("kg_total"), 0)} kg'
-                h += f'<tr><td>{_dm(_fecha(e.get("fecha_entrega")))}</td><td>{_e(e.get("producto_nombre"))}</td><td>{cant}</td></tr>'
-            h += "</table>"
-        st.markdown(h + "</div></div>", unsafe_allow_html=True)
-    except Exception as e:
-        st.caption(f"No se pudo mostrar el alimento: {e}")
-
-    # Plan de adaptación
-    if plan:
-        try:
-            esc = _sql("SELECT * FROM plan_adaptacion_escalones WHERE plan_id = ? ORDER BY orden", (plan["id"],))
-            if esc:
-                mx = max(float(x.get("mezcla_kg_cabeza_dia") or 0) for x in esc) or 1
-                barras = ""
-                n = len(esc)
-                for i, x in enumerate(esc):
-                    v = float(x.get("mezcla_kg_cabeza_dia") or 0)
-                    tono = int(70 + 130 * (1 - i / max(n - 1, 1)))
-                    col = VERDE if i == n - 1 else f"rgb({tono-60},{tono},{tono-90})"
-                    barras += (f'<div><div class="v" style="height:{max(6, v / mx * 52):.0f}px;background:{col}"></div>'
-                               f'{_num(v, 1).replace(",0", "")}</div>')
-                estado = "en curso" if en_adapt else "completo"
-                st.markdown(
-                    f'<div class="hm"><div class="hm-lbl">PLAN DE ADAPTACIÓN · {estado}</div><div class="hm-card">'
-                    f'<div class="hm-steps">{barras}</div>'
-                    f'<div class="hm-sub" style="margin-top:6px">kg de mezcla por cabeza por día, desde el {_dm(_fecha(plan["fecha_inicio"]))}. '
-                    f'Dieta final: {_e(plan.get("dieta_final"))}.</div></div></div>',
-                    unsafe_allow_html=True,
-                )
-        except Exception as e:
-            st.caption(f"No se pudo mostrar el plan: {e}")
-
     # Acciones de carga
     try:
         from . import ui_gestion as _g
@@ -645,25 +543,147 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
     except Exception as e:
         st.caption(f"No se pudieron mostrar las acciones: {e}")
 
-    # Ración vigente, movimientos y uniformidad
+    # Números clave
     try:
-        _seccion_racion(lote_id, d)
-        _seccion_movimientos(lote_id)
-        _seccion_uniformidad(d)
+        _kpis(lote, d)
     except Exception as e:
-        st.caption(f"No se pudo mostrar una sección: {e}")
+        st.caption(f"No se pudieron calcular los números: {e}")
 
-    # Informes
-    inf = _sql("SELECT * FROM informes_lote WHERE lote_id = ? ORDER BY fecha_creacion DESC LIMIT 5", (lote_id,))
-    h = '<div class="hm"><div class="hm-lbl">INFORMES AL CLIENTE</div><div class="hm-card">'
-    if inf:
-        for i in inf:
-            h += (f'<div class="hm-ag"><div class="d">{_dm(_fecha(str(i.get("fecha_creacion"))))}</div>'
-                  f'<div>{_e(i.get("tipo")).replace("_", " ")} · {_e(i.get("estado"))}</div></div>')
-    else:
-        pp = d.get("proxima_pesada")
-        h += f'<div class="hm-sub">Todavía no hay. El primero sale después de la pesada{" del " + _dm(pp) if pp else ""}.</div>'
-    st.markdown(h + "</div></div>", unsafe_allow_html=True)
+    # En la compu: dos columnas. En el celular se apilan solas.
+    col_a, col_b = st.columns([1.25, 1], gap="medium")
+    with col_a:
+        # Peso
+        try:
+            adpv_proy = lote.get("adpv_objetivo_kg") or d.get("adpv")
+            hasta = d.get("proxima_pesada")
+            sub = ""
+            if d.get("adpv") is not None:
+                sub = (f'+{_num(d.get("ganancia"))} kg en {d.get("dias_entre")} días · '
+                       f'<b>{_num(d["adpv"], 2)} kg/día</b>')
+            leyenda_proy = (
+                f'estimado a {_num(adpv_proy, 2)} kg/día'
+                + (" (objetivo)" if lote.get("adpv_objetivo_kg") else " (última ganancia medida)")
+            ) if adpv_proy else ""
+            st.markdown(
+                '<div class="hm"><div class="hm-lbl">PESO DEL LOTE · kg promedio</div><div class="hm-card">'
+                f'<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">'
+                f'<div class="hm-big" style="font-size:36px">{_num(d["peso"]) if d["peso"] else "—"}</div>'
+                f'<div class="hm-sub">{sub}</div></div>'
+                f'{_grafico_peso(d["pesadas"], adpv_proy, hasta)}'
+                f'<div class="hm-sub">Línea llena: balanza. Línea cortada: {leyenda_proy}.</div>'
+                + "".join(
+                    f'<div class="hm-nota">{_dm(_fecha(p["fecha"]))}: {_e(p.get("notas"))}</div>'
+                    for p in d["pesadas"][-2:] if p.get("notas")
+                )
+                + '</div></div>',
+                unsafe_allow_html=True,
+            )
+        except Exception as e:
+            st.caption(f"No se pudo dibujar el peso: {e}")
+
+        # Alimento
+        try:
+            h = '<div class="hm"><div class="hm-lbl">ALIMENTO</div><div class="hm-card">'
+            if d["stock"]:
+                for s in d["stock"]:
+                    dias = s.get("dias_restantes")
+                    fg, _ = ESTADO_COLOR[_estado_stock(dias)]
+                    pct = 0 if dias is None else max(4, min(100, float(dias) / 30 * 100))
+                    h += (
+                        '<div style="display:flex;justify-content:space-between;font-size:14px;margin-top:4px">'
+                        f'<span style="font-weight:600">{_e(s["producto"])}</span>'
+                        f'<span style="color:{fg};font-weight:700">{_texto_dias(dias)} · ~{_num(s.get("kg_restantes_hoy"), 0)} kg</span></div>'
+                        f'<div class="hm-bar"><div style="width:{pct:.0f}%;background:{fg}"></div></div>'
+                        f'<div class="hm-sub" style="margin-top:4px">Calculado: entregas menos consumo según la dieta de cada día '
+                        f'({_num(s.get("consumo_diario_kg"), 0)} kg/día hoy).</div>'
+                    )
+            else:
+                h += '<div class="hm-sub">Sin entregas de HMS para este lote.</div>'
+            ent = db.listar_entregas_lote(lote_id) or []
+            if ent:
+                h += '<table class="hm-tab" style="margin-top:8px"><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th></tr>'
+                for e in ent[:8]:
+                    cant = (f'{_num(e.get("cantidad_bolsas"), 0)} bolsas · ' if e.get("cantidad_bolsas") else "") + f'{_num(e.get("kg_total"), 0)} kg'
+                    h += f'<tr><td>{_dm(_fecha(e.get("fecha_entrega")))}</td><td>{_e(e.get("producto_nombre"))}</td><td>{cant}</td></tr>'
+                h += "</table>"
+            st.markdown(h + "</div></div>", unsafe_allow_html=True)
+        except Exception as e:
+            st.caption(f"No se pudo mostrar el alimento: {e}")
+
+        try:
+            _seccion_racion(lote_id, d)
+            _seccion_uniformidad(d)
+        except Exception as e:
+            st.caption(f"No se pudo mostrar una sección: {e}")
+
+    with col_b:
+        try:
+            _seccion_clima(lote)
+        except Exception as e:
+            st.caption(f"No se pudo mostrar el clima: {e}")
+        # Control semanal
+        try:
+            ctrl = d.get("control")
+            areas = [("Sanidad", "semaforo_sanidad"), ("Consumo", "semaforo_consumo"),
+                     ("Ambiente", "semaforo_ambiente"), ("Alimento", "semaforo_alimento")]
+            sem = ""
+            for nom, campo in areas:
+                est = ((ctrl or {}).get(campo) or "gris").lower()
+                fg, bg = ESTADO_COLOR.get(est, ESTADO_COLOR["gris"])
+                sem += f'<div><div class="c" style="background:{bg};border:2px solid {fg}"></div><div class="hm-sub">{nom}</div></div>'
+            f_c = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
+            cab = f"respondido el {_dm(f_c)}" if ctrl else "pendiente"
+            txt = (_e(ctrl.get("comentarios")) if ctrl and ctrl.get("comentarios")
+                   else "Cuando lleguen las respuestas del productor se pintan en verde, amarillo o rojo.")
+            st.markdown(
+                f'<div class="hm"><div class="hm-lbl">ÚLTIMO CONTROL SEMANAL · {cab}</div>'
+                f'<div class="hm-card"><div class="hm-sem">{sem}</div>'
+                f'<div class="hm-nota">{txt}</div></div></div>',
+                unsafe_allow_html=True,
+            )
+        except Exception as e:
+            st.caption(f"No se pudo mostrar el control: {e}")
+
+        # Plan de adaptación
+        if plan:
+            try:
+                esc = _sql("SELECT * FROM plan_adaptacion_escalones WHERE plan_id = ? ORDER BY orden", (plan["id"],))
+                if esc:
+                    mx = max(float(x.get("mezcla_kg_cabeza_dia") or 0) for x in esc) or 1
+                    barras = ""
+                    n = len(esc)
+                    for i, x in enumerate(esc):
+                        v = float(x.get("mezcla_kg_cabeza_dia") or 0)
+                        tono = int(70 + 130 * (1 - i / max(n - 1, 1)))
+                        col = VERDE if i == n - 1 else f"rgb({tono-60},{tono},{tono-90})"
+                        barras += (f'<div><div class="v" style="height:{max(6, v / mx * 52):.0f}px;background:{col}"></div>'
+                                   f'{_num(v, 1).replace(",0", "")}</div>')
+                    estado = "en curso" if en_adapt else "completo"
+                    st.markdown(
+                        f'<div class="hm"><div class="hm-lbl">PLAN DE ADAPTACIÓN · {estado}</div><div class="hm-card">'
+                        f'<div class="hm-steps">{barras}</div>'
+                        f'<div class="hm-sub" style="margin-top:6px">kg de mezcla por cabeza por día, desde el {_dm(_fecha(plan["fecha_inicio"]))}. '
+                        f'Dieta final: {_e(plan.get("dieta_final"))}.</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
+            except Exception as e:
+                st.caption(f"No se pudo mostrar el plan: {e}")
+
+        try:
+            _seccion_movimientos(lote_id)
+        except Exception as e:
+            st.caption(f"No se pudieron mostrar los movimientos: {e}")
+        # Informes
+        inf = _sql("SELECT * FROM informes_lote WHERE lote_id = ? ORDER BY fecha_creacion DESC LIMIT 5", (lote_id,))
+        h = '<div class="hm"><div class="hm-lbl">INFORMES AL CLIENTE</div><div class="hm-card">'
+        if inf:
+            for i in inf:
+                h += (f'<div class="hm-ag"><div class="d">{_dm(_fecha(str(i.get("fecha_creacion"))))}</div>'
+                      f'<div>{_e(i.get("tipo")).replace("_", " ")} · {_e(i.get("estado"))}</div></div>')
+        else:
+            pp = d.get("proxima_pesada")
+            h += f'<div class="hm-sub">Todavía no hay. El primero sale después de la pesada{" del " + _dm(pp) if pp else ""}.</div>'
+        st.markdown(h + "</div></div>", unsafe_allow_html=True)
 
 
 def _seccion_racion(lote_id: int, d: Dict) -> None:
@@ -756,5 +776,116 @@ def _seccion_uniformidad(d: Dict) -> None:
         f'<div class="hm-k"><div class="n">QUEDARON ATRÁS</div><div class="hm-big">{atras}</div><div class="f">10 % bajo el promedio</div></div>'
         f'</div><div class="hm-sub" style="margin-top:8px">{n} animales pesados de a uno. '
         f'Mediana {_num(q(.5), 0)} kg, el 10 % más pesado arriba de {_num(q(.9), 0)} kg.</div></div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------
+# Números clave y clima (ficha)
+# ---------------------------------------------------------------------
+def _tile(titulo: str, valor: str, sub: str = "") -> str:
+    return (f'<div class="hm-card hm-tile"><div class="n">{_e(titulo)}</div>'
+            f'<div class="hm-big">{valor}</div><div class="f">{sub}</div></div>')
+
+
+def _kpis(lote: Dict, d: Dict) -> None:
+    from . import stock_producto as sp
+    tiles = []
+    hoy = date.today()
+    tiles.append(_tile("DÍA DE ENCIERRE", str(d["dia"] or "—"),
+                       f"desde {_dm(d['ingreso'])}"))
+
+    pes = d.get("pesadas") or []
+    try:
+        p_hoy = sp.estimar_peso_vivo_lote(lote, hoy.isoformat(), pesadas=pes)
+    except Exception:
+        p_hoy = None
+    if p_hoy:
+        tiles.append(_tile("PESO HOY", f'{_num(p_hoy, 0)}<span style="font-size:14px"> kg</span>',
+                           "estimado desde la última pesada"))
+    if len(pes) >= 2:
+        f0, f1 = _fecha(pes[0]["fecha"]), _fecha(pes[-1]["fecha"])
+        g = float(pes[-1]["peso_promedio_kg"]) - float(pes[0]["peso_promedio_kg"])
+        tiles.append(_tile("GANADO", f'+{_num(g, 1)}<span style="font-size:14px"> kg</span>',
+                           f"medido, {(f1 - f0).days} días" if f0 and f1 else "medido"))
+    if d.get("adpv") is not None:
+        tiles.append(_tile("GANANCIA DIARIA", _num(d["adpv"], 2),
+                           "kg/día, última pesada"))
+
+    # Consumo de mezcla estimado hoy (ración vigente × ajuste por peso)
+    try:
+        dietas = db.listar_dietas(lote["id"]) or []
+        vig = [x for x in dietas if str(x.get("fecha") or "")[:10] <= hoy.isoformat()]
+        if vig:
+            dv = sorted(vig, key=lambda x: str(x.get("fecha")))[-1]
+            comp = dv.get("composicion") or json.loads(dv.get("composicion_json") or "[]")
+            tot = sum(float(c.get("kg_tal_cual") or 0) for c in comp)
+            ci = (d.get("stock_min") or {}).get("consumo_info") or {}
+            f = ci.get("factor_peso_vivo") or 1.0
+            if tot:
+                tiles.append(_tile("CONSUMO HOY", _num(tot * f, 1),
+                                   "kg de ración/cab/día (estimado)"))
+    except Exception:
+        pass
+
+    try:
+        ent = db.listar_entregas_lote(lote["id"]) or []
+    except Exception:
+        ent = []
+    if ent:
+        kg = sum(float(e.get("kg_total") or 0) for e in ent)
+        plata = sum(float(e.get("precio_total") or 0) for e in ent)
+        sub = f"{len(ent)} entrega{'s' if len(ent) != 1 else ''}"
+        if plata and d.get("animales"):
+            sub += f" · ${_num(plata / d['animales'], 0)}/cab sin IVA"
+        tiles.append(_tile("ALIMENTO HMS", f'{_num(kg, 0)}<span style="font-size:14px"> kg</span>', sub))
+
+    pp = d.get("proxima_pesada")
+    if pp:
+        dd = (pp - hoy).days
+        tiles.append(_tile("PRÓXIMA PESADA", _dm(pp),
+                           f"en {dd} días" if dd >= 0 else f"atrasada {-dd} días"))
+    st.markdown(f'<div class="hm"><div class="hm-kgrid">{"".join(tiles)}</div></div>',
+                unsafe_allow_html=True)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _clima_cliente(cliente_id: int) -> Dict:
+    from . import dashboard
+    c = db.obtener_cliente(cliente_id)
+    return dashboard.obtener_clima_para_cliente(c) if c else {}
+
+
+def _seccion_clima(lote: Dict) -> None:
+    info = _clima_cliente(lote.get("cliente_id"))
+    if not info or info.get("estado") not in (None, "ok"):
+        return
+    pron = [x for x in info.get("pronostico_7d") or []
+            if "Pronóstico" in str(x.get("tramo")) or "HOY" in str(x.get("tramo"))][:6]
+    if not pron and info.get("temp_c") is None:
+        return
+    filas = ""
+    for x in pron:
+        f = _fecha(x.get("fecha"))
+        dia = "Hoy" if "HOY" in str(x.get("tramo")) else (_dia_corto(f) if f else "")
+        lluvia = x.get("precipitacion_mm")
+        filas += (f'<tr><td>{dia}</td><td>{_num(x.get("t_min"), 0)}° / {_num(x.get("t_max"), 0)}°</td>'
+                  f'<td>{_num(lluvia, 0) + " mm" if lluvia else "—"}</td>'
+                  f'<td>{_num(x.get("viento_max_kmh"), 0)} km/h</td>'
+                  f'<td>{_e(x.get("thi_estado") or "")}</td></tr>')
+    alertas = []
+    for al_l in info.get("alertas_lotes") or []:
+        for al in al_l.get("alertas") or []:
+            if str(al.get("severidad") or "").lower() in ("warning", "critica") and al.get("titulo") not in alertas:
+                alertas.append(al.get("titulo"))
+    ahora = ""
+    if info.get("temp_c") is not None:
+        ahora = (f'<div class="hm-sub" style="margin-bottom:6px">Ahora: <b>{_num(info["temp_c"], 0)}°</b>, '
+                 f'humedad {_num(info.get("humedad_pct"), 0)} %, {_e(info.get("thi_estado") or "")}</div>')
+    al_html = "".join(f'<div class="hm-nota">⚠ {_e(a)}</div>' for a in alertas[:3])
+    st.markdown(
+        f'<div class="hm"><div class="hm-lbl">CLIMA · {_e(info.get("localidad") or "")}</div>'
+        f'<div class="hm-card">{ahora}<table class="hm-tab"><tr><th>Día</th><th>Mín / máx</th>'
+        f'<th>Lluvia</th><th>Viento</th><th>Estrés</th></tr>{filas}</table>{al_html}</div></div>',
         unsafe_allow_html=True,
     )

@@ -266,12 +266,11 @@ def dialog_baja(cliente_id: int):
 def acciones_lote(lote: Dict, d: Dict, kp: str) -> None:
     lid = lote["id"]
     st.markdown('<div class="hm"><div class="hm-lbl">CARGAR</div></div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
+    c1, c2, c3, c4 = st.columns(4)
     if c1.button("⚖ Pesada", key=f"{kp}_a_pes_{lid}", width="stretch"):
         dialog_pesada(lid)
     if c2.button("🌾 Entrega", key=f"{kp}_a_ent_{lid}", width="stretch"):
         dialog_entrega(lid)
-    c3, c4 = st.columns(2)
     if c3.button("🐄 Movimiento", key=f"{kp}_a_mov_{lid}", width="stretch"):
         dialog_movimiento(lid)
     if (lote.get("estado") or "activo") == "activo":

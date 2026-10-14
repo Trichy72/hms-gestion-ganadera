@@ -1734,7 +1734,7 @@ elif _logo_path_hdr.exists():
 st.markdown(
     '<style>'
     '.block-container{padding-top:3.4rem !important;}'
-    '@media (min-width:900px){.block-container{max-width:920px !important;'
+    '@media (min-width:900px){.block-container{max-width:1280px !important;'
     'margin:0 auto !important;}}'
     '[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],'
     '[data-testid="stExpandSidebarButton"]{display:none !important;}'

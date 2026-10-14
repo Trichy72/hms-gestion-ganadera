@@ -410,8 +410,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     except Exception as e:
         log.info("ui_movil: resumen: %s", e)
         tiles = ""
-    lbl_tot = ("TOTAL DE TUS CLIENTES" if n_cli > 1 else
-               (f"TOTALES · POR AHORA SOLO {clientes[0].upper()}" if n_cli == 1 else ""))
+    lbl_tot = ""
     st.markdown(
         f'<div class="hm"><div class="hm-top hm-hero">'
         f'<div class="t">{_saludo()}, Mauri</div>'
@@ -533,34 +532,70 @@ def _pedidos_proximos(datos: List[Dict]) -> List[Dict]:
 
 
 def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> str:
-    """Totales del negocio (suma de todos los clientes). Lo de cada lote
-    va en la tabla de clientes, con su nombre."""
+    """Cuatro preguntas del negocio, cada una con su respuesta y para qué
+    sirve. Siempre nombra a los clientes cuando el dato es de uno."""
+    kg_ = '<span style="font-size:14px"> kg</span>'
     tiles = []
-    n_anim = sum(d.get("animales") or 0 for d in datos)
-    tiles.append(_tile("ANIMALES EN ENCIERRE", _num(n_anim, 0),
-                       f"en {len(datos)} lote{'s' if len(datos) != 1 else ''}"))
-    cortos = sorted([(d["stock_min"]["dias_restantes"], d["cliente"]) for d in datos
-                     if (d.get("stock_min") or {}).get("dias_restantes") is not None
-                     and d["stock_min"]["dias_restantes"] <= 10])
-    tiles.append(_tile("SIN ALIMENTO EN 10 DÍAS", _num(len(cortos), 0),
-                       ("lote" + ("s" if len(cortos) != 1 else "") + ": "
-                        + ", ".join(c for _, c in cortos[:3]) + ("…" if len(cortos) > 3 else ""))
-                       if cortos else "ninguno, todos con alimento"))
+
+    # 1. ¿A quién hay que mandarle alimento?
+    prox = []
+    for d in datos:
+        sm = d.get("stock_min") or {}
+        fa = _fecha(sm.get("fecha_agotamiento"))
+        if fa:
+            prox.append((fa - timedelta(days=2), d["cliente"], sm.get("producto") or "", fa))
+    prox.sort()
+    if prox:
+        f_ped, cli, prod, fa = prox[0]
+        cuando = "hoy" if f_ped <= hoy else f"el {_dia_corto(f_ped).lower()}/{f_ped.month}"
+        otros = [p for p in prox[1:] if p[0] <= hoy + timedelta(days=10)]
+        sub = (f"{prod}: se le termina el {_dm(fa)}. Pedilo {cuando} para que no le falte."
+               + (f" Después: {', '.join(p[1] for p in otros[:3])}." if otros else ""))
+        tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", _e(cli), sub))
+    else:
+        tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", "—",
+                           "Cargá las entregas para saber cuándo se le termina a cada uno."))
+
+    # 2. ¿Cuánto voy a vender el mes que viene?
     if pedidos:
         kg30 = sum(p["kg30"] for p in pedidos)
         plata = sum(p["plata30"] or 0 for p in pedidos)
-        tiles.append(_tile("VENTA PRÓXIMOS 30 DÍAS",
-                           f'{_num(kg30, 0)}<span style="font-size:14px"> kg</span>',
-                           (f"≈ ${_num(plata, 0)} sin IVA, " if plata else "") + "según lo que comen"))
-    ini_mes = hoy.replace(day=1).isoformat()
-    filas = _sql("SELECT kg_total, precio_total FROM entregas_producto WHERE fecha_entrega >= ?",
-                 (ini_mes,))
-    kg_m = sum(float(f.get("kg_total") or 0) for f in filas)
-    pl_m = sum(float(f.get("precio_total") or 0) for f in filas)
-    tiles.append(_tile(f"ENTREGADO EN {MESES[hoy.month - 1].upper()}",
-                       f'{_num(kg_m, 0)}<span style="font-size:14px"> kg</span>',
-                       (f"${_num(pl_m, 0)} sin IVA" if pl_m else
-                        ("todavía no hubo entregas" if not filas else f"{len(filas)} entregas"))))
+        tiles.append(_tile("VENTA DEL PRÓXIMO MES", f"{_num(kg30, 0)}{kg_}",
+                           (f"≈ ${_num(plata, 0)} sin IVA. " if plata else "")
+                           + "Es lo que van a comer tus clientes en 30 días con la ración de hoy: "
+                             "sirve para comprar a tiempo."))
+
+    # 3. ¿Cuánto llevo vendido este mes? (contra el mes anterior)
+    ini_mes = hoy.replace(day=1)
+    ini_ant = (ini_mes - timedelta(days=1)).replace(day=1)
+    def _kg(desde, hasta):
+        f = _sql("SELECT kg_total, precio_total FROM entregas_producto "
+                 "WHERE fecha_entrega >= ? AND fecha_entrega < ?", (desde.isoformat(), hasta.isoformat()))
+        return (sum(float(x.get("kg_total") or 0) for x in f),
+                sum(float(x.get("precio_total") or 0) for x in f))
+    kg_m, pl_m = _kg(ini_mes, hoy + timedelta(days=1))
+    kg_a, _ = _kg(ini_ant, ini_mes)
+    mes, mes_ant = MESES[hoy.month - 1], MESES[ini_ant.month - 1]
+    tiles.append(_tile(f"ENTREGADO EN {mes.upper()}", f"{_num(kg_m, 0)}{kg_}",
+                       (f"${_num(pl_m, 0)} sin IVA. " if pl_m else "")
+                       + f"En {mes_ant} fueron {_num(kg_a, 0)} kg. "
+                       + ("Todavía no se cargó ninguna entrega este mes." if not kg_m else "")))
+
+    # 4. ¿Cómo vienen engordando?
+    medidos = sorted([(d["adpv"], d["cliente"]) for d in datos if d.get("adpv") is not None],
+                     reverse=True)
+    if medidos:
+        if len(medidos) == 1:
+            v, c = medidos[0]
+            sub = f"Lo que ganó {c} entre las dos últimas pesadas."
+            val = _num(v, 2)
+        else:
+            num = sum(d["adpv"] * (d.get("animales") or 0) for d in datos if d.get("adpv") is not None)
+            den = sum((d.get("animales") or 0) for d in datos if d.get("adpv") is not None)
+            val = _num(num / den, 2) if den else "—"
+            sub = (f"Promedio de {len(medidos)} lotes pesados. Mejor: {medidos[0][1]} "
+                   f"({_num(medidos[0][0], 2)}). Más bajo: {medidos[-1][1]} ({_num(medidos[-1][0], 2)}).")
+        tiles.append(_tile("ENGORDE · KG POR DÍA", val, sub))
     return "".join(tiles)
 
 @st.cache_data(ttl=3600, show_spinner=False)

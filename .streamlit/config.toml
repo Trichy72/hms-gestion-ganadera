@@ -15,5 +15,16 @@ maxMessageSize = 2000
 [browser]
 gatherUsageStats = false
 
-[theme]
+# Claro y oscuro: lo decide el sistema del celular/compu (opción
+# "Use system setting" del menú de la app, que es la de fábrica).
+[theme.light]
 primaryColor = "#2E7D32"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F4EF"
+textColor = "#18231B"
+
+[theme.dark]
+primaryColor = "#2E7D32"
+backgroundColor = "#0F1411"
+secondaryBackgroundColor = "#1C231E"
+textColor = "#E8EDE9"

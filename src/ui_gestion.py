@@ -438,10 +438,10 @@ def render_clientes(kp: str = "cl") -> None:
                 except Exception:
                     n += int(l.get("cantidad_inicial") or 0)
             linea = f'{len(ls)} lote{"s" if len(ls) > 1 else ""} activo{"s" if len(ls) > 1 else ""} · {n} animales'
-            color = um.VERDE
+            color = "var(--hm-acc)"
         else:
             linea = "Dado de baja" if baja else "Sin lotes activos"
-            color = "#8A948C"
+            color = "var(--hm-sub)"
         ini = "".join(p[0] for p in (c.get("nombre") or "?").split()[:2]).upper()
         st.markdown(
             f'<div class="hm"><div class="hm-card"><div class="hm-row">'

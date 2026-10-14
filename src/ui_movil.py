@@ -196,27 +196,31 @@ def _texto_dias(dias) -> str:
 _CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap');
-.hm {{ font-family: 'Source Sans 3', system-ui, sans-serif; color: #18231B; }}
+.hm {{ font-family: 'Source Sans 3', system-ui, sans-serif; color: var(--hm-txt);
+  --hm-txt:#18231B; --hm-sub:#5B6B5F; --hm-card:#FFFFFF; --hm-line:#E1E6DD; --hm-bar:#EEF0EC;
+  --hm-soft:#F4F6F1; --hm-acc:#1B3E27; --hm-chip:#EEF0EC; --hm-est:#4F7A1F; }}
+@media (prefers-color-scheme: dark) {{ .hm {{ --hm-txt:#E8EDE9; --hm-sub:#A3B0A6; --hm-card:#1C231E;
+  --hm-line:#2E3A31; --hm-bar:#2E3A31; --hm-soft:#252E28; --hm-acc:#8BC53F; --hm-chip:#2E3A31; --hm-est:#A7D46A; }} }}
 .hm-top {{ background: {VERDE}; color: #fff; border-radius: 16px; padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 8px; }}
 .hm-top .t {{ font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 26px; line-height: 1.05; letter-spacing: .2px; }}
 .hm-top .s {{ font-size: 14px; color: #DDE7DF; }}
 .hm-top b {{ color: #fff; }}
-.hm-lbl {{ font-size: 12px; font-weight: 700; letter-spacing: 1.2px; color: #5B6B5F; margin: 18px 0 8px; }}
-.hm-card {{ background: #fff; border: 1px solid #E1E6DD; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }}
+.hm-lbl {{ font-size: 12px; font-weight: 700; letter-spacing: 1.2px; color: var(--hm-sub); margin: 18px 0 8px; }}
+.hm-card {{ background: var(--hm-card); border: 1px solid var(--hm-line); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }}
 .hm-row {{ display: flex; gap: 12px; align-items: center; }}
 .hm-ico {{ width: 38px; height: 38px; border-radius: 19px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; }}
 .hm-h {{ font-weight: 700; font-size: 15px; }}
-.hm-sub {{ font-size: 13px; color: #5B6B5F; }}
+.hm-sub {{ font-size: 13px; color: var(--hm-sub); }}
 .hm-big {{ font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }}
 .hm-kpis {{ display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-top: 10px; }}
-.hm-k .n {{ font-size: 11px; color: #5B6B5F; letter-spacing: .6px; }}
-.hm-k .f {{ font-size: 11px; color: #5B6B5F; }}
-.hm-bar {{ height: 10px; border-radius: 5px; background: #EEF0EC; overflow: hidden; margin-top: 6px; }}
+.hm-k .n {{ font-size: 11px; color: var(--hm-sub); letter-spacing: .6px; }}
+.hm-k .f {{ font-size: 11px; color: var(--hm-sub); }}
+.hm-bar {{ height: 10px; border-radius: 5px; background: var(--hm-bar); overflow: hidden; margin-top: 6px; }}
 .hm-bar > div {{ height: 10px; }}
 .hm-pill {{ font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; white-space: nowrap; }}
-.hm-ag {{ display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid #EEF0EC; font-size: 14px; }}
+.hm-ag {{ display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid var(--hm-bar); font-size: 14px; }}
 .hm-ag:first-child {{ border-top: 0; }}
-.hm-ag .d {{ width: 70px; font-weight: 700; color: {VERDE}; flex-shrink: 0; }}
+.hm-ag .d {{ width: 70px; font-weight: 700; color: var(--hm-acc); flex-shrink: 0; }}
 .hm-tl {{ display: grid; grid-template-columns: 0.9fr 1.05fr 1.15fr 0.9fr 1fr; gap: 4px; margin-top: 8px; }}
 .hm-tl .b {{ height: 6px; border-radius: 3px; }}
 .hm-tl .x {{ font-size: 10.5px; letter-spacing: -.2px; overflow-wrap: normal; word-break: keep-all; color: #C9D8CC; margin-top: 5px; line-height: 1.25; }}
@@ -224,12 +228,12 @@ _CSS = f"""
 .hm-sem {{ display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; text-align: center; }}
 .hm-sem .c {{ width: 32px; height: 32px; border-radius: 16px; margin: 0 auto 6px; }}
 .hm-tab {{ width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }}
-.hm-tab td, .hm-tab th {{ padding: 7px 4px; border-top: 1px solid #EEF0EC; text-align: left; }}
-.hm-tab th {{ font-size: 11px; color: #5B6B5F; font-weight: 600; border-top: 0; }}
+.hm-tab td, .hm-tab th {{ padding: 7px 4px; border-top: 1px solid var(--hm-bar); text-align: left; }}
+.hm-tab th {{ font-size: 11px; color: var(--hm-sub); font-weight: 600; border-top: 0; }}
 .hm-steps {{ display: flex; align-items: flex-end; gap: 6px; height: 70px; margin-top: 8px; }}
-.hm-steps > div {{ flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #5B6B5F; }}
+.hm-steps > div {{ flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--hm-sub); }}
 .hm-steps .v {{ width: 100%; border-radius: 4px 4px 0 0; }}
-.hm-nota {{ font-size: 13px; color: #5B6B5F; background: #F4F6F1; border-radius: 8px; padding: 8px 10px; margin-top: 8px; }}
+.hm-nota {{ font-size: 13px; color: var(--hm-sub); background: var(--hm-soft); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }}
 </style>
 """
 
@@ -294,7 +298,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         f_ctrl = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
         if not ctrl or (f_ctrl and (hoy - f_ctrl).days > 7):
             tareas.append((
-                "#EEF0EC", "#5B6B5F", "✓",
+                "var(--hm-chip)", "var(--hm-sub)", "✓",
                 f"{d['cliente']} · control semanal",
                 "Sin control esta semana." if ctrl else "Todavía no tiene ningún control cargado.",
             ))
@@ -409,7 +413,7 @@ def _tarjeta_lote(d: Dict) -> None:
         cfg, cbg = ESTADO_COLOR.get(ctrl["semaforo_general"], ESTADO_COLOR["gris"])
         pill = f'<span class="hm-pill" style="background:{cbg};color:{cfg}">Control: {_e(ctrl["semaforo_general"])}</span>'
     else:
-        pill = '<span class="hm-pill" style="background:#EEF0EC;color:#5B6B5F">Sin control aún</span>'
+        pill = '<span class="hm-pill" style="background:var(--hm-chip);color:var(--hm-sub)">Sin control aún</span>'
     adpv = d.get("adpv")
     h = (
         '<div class="hm"><div class="hm-card">'
@@ -467,20 +471,20 @@ def _grafico_peso(pesadas: List[Dict], adpv_proy: Optional[float],
     for i in range(4):
         v = lo + (hi - lo) * i / 3
         y = Y(v)
-        g.append(f'<line x1="{L}" y1="{y:.1f}" x2="{R}" y2="{y:.1f}" stroke="#EEF0EC"/>')
-        g.append(f'<text x="{L-6}" y="{y+4:.1f}" font-size="11" fill="#5B6B5F" text-anchor="end">{v:.0f}</text>')
+        g.append(f'<line x1="{L}" y1="{y:.1f}" x2="{R}" y2="{y:.1f}" style="stroke:var(--hm-bar)"/>')
+        g.append(f'<text x="{L-6}" y="{y+4:.1f}" font-size="11" style="fill:var(--hm-sub)" text-anchor="end">{v:.0f}</text>')
     linea = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in pts)
-    g.append(f'<polyline points="{linea}" fill="none" stroke="{VERDE}" stroke-width="3" stroke-linecap="round"/>')
+    g.append(f'<polyline points="{linea}" fill="none" style="stroke:var(--hm-acc)" stroke-width="3" stroke-linecap="round"/>')
     for d, v in pts:
-        g.append(f'<circle cx="{X(d):.1f}" cy="{Y(v):.1f}" r="5" fill="{VERDE}"/>')
-        g.append(f'<text x="{X(d):.1f}" y="{Y(v)-10:.1f}" font-size="12" font-weight="700" fill="#18231B" text-anchor="middle">{_num(v)}</text>')
-        g.append(f'<text x="{X(d):.1f}" y="{H-4}" font-size="11" fill="#5B6B5F" text-anchor="middle">{_dm(d)}</text>')
+        g.append(f'<circle cx="{X(d):.1f}" cy="{Y(v):.1f}" r="5" style="fill:var(--hm-acc)"/>')
+        g.append(f'<text x="{X(d):.1f}" y="{Y(v)-10:.1f}" font-size="12" font-weight="700" style="fill:var(--hm-txt)" text-anchor="middle">{_num(v)}</text>')
+        g.append(f'<text x="{X(d):.1f}" y="{H-4}" font-size="11" style="fill:var(--hm-sub)" text-anchor="middle">{_dm(d)}</text>')
     if proy:
         d0, v0 = pts[-1]
         g.append(f'<line x1="{X(d0):.1f}" y1="{Y(v0):.1f}" x2="{X(proy[0]):.1f}" y2="{Y(proy[1]):.1f}" stroke="{LIMA}" stroke-width="3" stroke-dasharray="6 6"/>')
-        g.append(f'<circle cx="{X(proy[0]):.1f}" cy="{Y(proy[1]):.1f}" r="5" fill="#fff" stroke="{LIMA}" stroke-width="2.5"/>')
-        g.append(f'<text x="{X(proy[0])-4:.1f}" y="{Y(proy[1])-10:.1f}" font-size="12" font-weight="700" fill="#4F7A1F" text-anchor="end">~{proy[1]:.0f} est.</text>')
-        g.append(f'<text x="{X(proy[0]):.1f}" y="{H-4}" font-size="11" fill="#5B6B5F" text-anchor="end">{_dm(proy[0])}</text>')
+        g.append(f'<circle cx="{X(proy[0]):.1f}" cy="{Y(proy[1]):.1f}" r="5" style="fill:var(--hm-card)" stroke="{LIMA}" stroke-width="2.5"/>')
+        g.append(f'<text x="{X(proy[0])-4:.1f}" y="{Y(proy[1])-10:.1f}" font-size="12" font-weight="700" style="fill:var(--hm-est)" text-anchor="end">~{proy[1]:.0f} est.</text>')
+        g.append(f'<text x="{X(proy[0]):.1f}" y="{H-4}" font-size="11" style="fill:var(--hm-sub)" text-anchor="end">{_dm(proy[0])}</text>')
     return (
         f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" '
         f'aria-label="Evolución del peso promedio del lote">{"".join(g)}</svg>'

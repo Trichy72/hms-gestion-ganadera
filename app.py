@@ -1627,6 +1627,33 @@ st.markdown("""
     div[data-testid="stTabs"] [data-testid="stTab"]::before {
         display: none !important;
     }
+    /* Modo claro (lo decide el sistema): barra de pestañas clara y la
+       pestaña activa en verde HMS. */
+    @media (prefers-color-scheme: light) {
+        div[data-testid="stTabs"] [role="tablist"] {
+            background: #EEF1EC !important;
+        }
+        div[data-testid="stTabs"] [data-testid="stTab"] {
+            color: #4A5A4E !important;
+        }
+        div[data-testid="stTabs"] [data-testid="stTab"]:hover {
+            background: rgba(0, 0, 0, 0.05) !important;
+            color: #1B3E27 !important;
+        }
+        div[data-testid="stTabs"] div[data-testid="stTab"][aria-selected="true"],
+        div[data-testid="stTabs"] div[data-testid="stTab"][data-selected="true"] {
+            background: #1B3E27 !important;
+            background-color: #1B3E27 !important;
+            color: #FFFFFF !important;
+            box-shadow: none;
+        }
+        div[data-testid="stTabs"] div[data-testid="stTab"][aria-selected="true"] p {
+            color: #FFFFFF !important;
+        }
+        div[data-testid="stTabs"] div[data-testid="stTab"][aria-selected="true"] span[data-testid="stIconMaterial"] {
+            color: #8BC53F !important;
+        }
+    }
     /* Legacy (por si Streamlit vuelve a BaseWeb) */
     .stTabs [data-baseweb="tab-highlight"] { display: none !important; }
     /* Métricas */
@@ -1681,7 +1708,21 @@ else:
     _logo_path_hdr = Path("assets/logo_blanco.png")
     if not _logo_path_hdr.exists():
         _logo_path_hdr = Path("assets/logo.png")
-if _logo_path_hdr.exists():
+# Logo según el modo del sistema: blanco en oscuro, color en claro.
+_lb_hdr, _lc_hdr = Path("assets/logo_blanco.png"), Path("assets/logo.png")
+if _lb_hdr.exists() and _lc_hdr.exists():
+    import base64 as _b64_hdr
+    _st_img = 'style="height:30px;width:auto;max-width:110px;object-fit:contain;"'
+    _logo_html_hdr = (
+        '<style>.hms-logo-c{display:none}'
+        '@media (prefers-color-scheme: light){.hms-logo-b{display:none}.hms-logo-c{display:inline}}'
+        '</style>'
+        f'<img class="hms-logo-b" {_st_img} src="data:image/png;base64,'
+        f'{_b64_hdr.b64encode(_lb_hdr.read_bytes()).decode()}"/>'
+        f'<img class="hms-logo-c" {_st_img} src="data:image/png;base64,'
+        f'{_b64_hdr.b64encode(_lc_hdr.read_bytes()).decode()}"/>'
+    )
+elif _logo_path_hdr.exists():
     import base64 as _b64_hdr
     _logo_html_hdr = (
         '<img src="data:image/png;base64,'

@@ -239,12 +239,13 @@ _CSS = f"""
 .hm-pill {{ font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; white-space: nowrap; }}
 .hm-ag {{ display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid var(--hm-bar); font-size: 14px; }}
 .hm-ag:first-child {{ border-top: 0; }}
-.hm-ag .d {{ width: 70px; font-weight: 700; color: var(--hm-acc); flex-shrink: 0; }}
+.hm-ag .d {{ width: 78px; white-space: nowrap; font-weight: 700; color: var(--hm-acc); flex-shrink: 0; }}
 .hm-kgrid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0 4px; }}
 .hm-tile {{ margin-bottom: 0; padding: 12px 14px; }}
 .hm-tile .n {{ font-size: 11px; color: var(--hm-sub); letter-spacing: .6px; }}
 .hm-tile .f {{ font-size: 11px; color: var(--hm-sub); margin-top: 2px; }}
-.hm-hero .hm-kgrid {{ margin-top: 10px; }}
+.hm-hero .hm-kgrid {{ margin-top: 6px; }}
+.hm-hlbl {{ margin-top: 14px; font-size: 11px; letter-spacing: .08em; color: #C9D8CC; font-weight: 600; }}
 .hm-hero .hm-tile {{ background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }}
 .hm-hero .hm-tile .n, .hm-hero .hm-tile .f {{ color: #C9D8CC; }}
 .hm-hero .hm-big {{ color: #FFFFFF; }}
@@ -391,7 +392,16 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                        f"Falta el WhatsApp de {len(nombres)} cliente{'s' if len(nombres) != 1 else ''}",
                        ", ".join(nombres) + ". Cargalo en Clientes para mandar controles y avisos."))
     n_anim = sum(d.get("animales") or 0 for d in datos)
-    n_cli = len({d["lote"].get("cliente_id") for d in datos})
+    clientes = sorted({d["cliente"] for d in datos if d.get("cliente")})
+    n_cli = len(clientes)
+    if n_cli == 0:
+        quien = "Todavía no tenés clientes con lotes en seguimiento"
+    elif n_cli <= 3:
+        quien = ("Seguís " + " y ".join([", ".join(clientes[:-1]), clientes[-1]] if n_cli > 1 else clientes)
+                 + f": <b>{n_anim} animales</b> en {len(datos)} lote{'s' if len(datos) != 1 else ''}")
+    else:
+        quien = (f"Seguís <b>{n_cli} clientes</b>: <b>{n_anim} animales</b> "
+                 f"en {len(datos)} lotes")
     resto = (f' · <b>{len(tareas)} cosa{"s" if len(tareas) != 1 else ""} para mirar</b>'
              if tareas else " · nada urgente hoy")
     pedidos = _pedidos_proximos(datos)
@@ -400,12 +410,14 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     except Exception as e:
         log.info("ui_movil: resumen: %s", e)
         tiles = ""
+    lbl_tot = ("TOTAL DE TUS CLIENTES" if n_cli > 1 else
+               (f"TOTALES · POR AHORA SOLO {clientes[0].upper()}" if n_cli == 1 else ""))
     st.markdown(
         f'<div class="hm"><div class="hm-top hm-hero">'
         f'<div class="t">{_saludo()}, Mauri</div>'
-        f'<div class="s"><b>{n_anim} animales</b> en {len(datos)} lote{"s" if len(datos) != 1 else ""} '
-        f'de {n_cli} cliente{"s" if n_cli != 1 else ""}{resto}.</div>'
-        f'<div class="hm-kgrid">{tiles}</div>'
+        f'<div class="s">{quien}{resto}.</div>'
+        + (f'<div class="hm-hlbl">{_e(lbl_tot)}</div>' if tiles and lbl_tot else "")
+        + f'<div class="hm-kgrid">{tiles}</div>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
@@ -429,48 +441,12 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 with st.expander(f"Ver {len(tareas) - 6} más"):
                     st.markdown(f'<div class="hm">{_html_tareas(tareas[6:])}</div>',
                                 unsafe_allow_html=True)
-
-        c_l, c_b = st.columns([2, 1.3], vertical_alignment="center")
-        c_l.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
-                     unsafe_allow_html=True)
-        if c_b.button("➕ Encierre nuevo", key=f"{kp}_nuevo_enc", type="primary",
-                      width="stretch"):
-            from . import ui_gestion as _g
-            _g.dialog_encierre()
-        if not datos:
-            st.info("No hay lotes activos. Cargá un encierre con el botón de arriba.")
-        datos_ord = sorted(datos, key=lambda x: ((x.get("stock_min") or {}).get("dias_restantes")
-                                                  if (x.get("stock_min") or {}).get("dias_restantes") is not None
-                                                  else 9999))
-        if len(datos_ord) <= 3:
-            for d in datos_ord:
-                _tarjeta_lote(d)
-                if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):
-                    on_abrir_lote(d["id"])
         else:
-            _tabla_lotes(datos_ord, on_abrir_lote, kp)
+            st.markdown('<div class="hm"><div class="hm-lbl">PARA HOY</div><div class="hm-card">'
+                        '<div class="hm-sub">Nada pendiente. Todo en orden.</div></div></div>',
+                        unsafe_allow_html=True)
 
     with col_b:
-        try:
-            _clima_semana(datos)
-        except Exception as e:
-            log.info("ui_movil: clima semana: %s", e)
-        if pedidos:
-            h = ('<div class="hm"><div class="hm-lbl">PRÓXIMOS PEDIDOS DE ALIMENTO</div><div class="hm-card">'
-                 '<table class="hm-tab"><tr><th>Cliente</th><th>Producto</th><th>Se termina</th>'
-                 '<th>Próx. 30 días</th></tr>')
-            for p in pedidos[:8]:
-                plata = f'<div class="hm-sub">${_num(p["plata30"], 0)}</div>' if p.get("plata30") else ""
-                h += (f'<tr><td>{_e(p["cliente"])}</td><td>{_e(p["producto"])}</td>'
-                      f'<td>{_dm(p["fecha"])}</td><td>{_num(p["kg30"], 0)} kg{plata}</td></tr>')
-            if len(pedidos) > 8:
-                h += (f'<tr><td colspan="4" class="hm-sub">… y {len(pedidos) - 8} más '
-                      f'(la tabla sigue por fecha)</td></tr>')
-            h += ('</table><div class="hm-sub" style="margin-top:6px">Lo que va a consumir cada lote en '
-                  'los próximos 30 días con la ración vigente (estimado). Plata a último precio, sin IVA.'
-                  '</div></div></div>')
-            st.markdown(h, unsafe_allow_html=True)
-
         ag = []
         for d in datos:
             sm = d.get("stock_min")
@@ -487,12 +463,38 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         for f_, t_ in ag:
             tarea, _, cli = t_.rpartition(" · ")
             agr.setdefault((f_, tarea), []).append(cli)
-        ag = [(f_, f"{tarea} · {', '.join(clis)}") for (f_, tarea), clis in sorted(agr.items())][:10]
+        ag = [(f_, tarea, clis) for (f_, tarea), clis in sorted(agr.items())]
+        mas_ag = max(0, len(ag) - 7)
+        ag = ag[:7]
+        h = '<div class="hm"><div class="hm-lbl">AGENDA · PRÓXIMAS 2 SEMANAS</div><div class="hm-card">'
         if ag:
-            h = '<div class="hm"><div class="hm-lbl">AGENDA · PRÓXIMAS 2 SEMANAS</div><div class="hm-card">'
-            for f, t in ag:
-                h += f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div><div>{_e(t)}</div></div>'
-            st.markdown(h + "</div></div>", unsafe_allow_html=True)
+            for f, tarea, clis in ag:
+                h += (f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div>'
+                      f'<div><b>{_e(", ".join(clis))}</b> · {_e(tarea)}</div></div>')
+            if mas_ag:
+                h += f'<div class="hm-sub" style="padding-top:8px">… y {mas_ag} más en estas dos semanas</div>'
+        else:
+            h += '<div class="hm-sub">Sin tareas en las próximas dos semanas.</div>'
+        st.markdown(h + "</div></div>", unsafe_allow_html=True)
+        try:
+            _clima_semana(datos)
+        except Exception as e:
+            log.info("ui_movil: clima semana: %s", e)
+
+    # Una fila por cliente/lote: todo lo de cada uno junto, con su nombre.
+    st.markdown('<div class="hm"><div class="hm-lbl">CLIENTES EN SEGUIMIENTO · '
+                f'{n_cli}</div></div>', unsafe_allow_html=True)
+    if not datos:
+        st.info("No hay lotes activos. Cargá un encierre con el botón de abajo.")
+    datos_ord = sorted(datos, key=lambda x: ((x.get("stock_min") or {}).get("dias_restantes")
+                                              if (x.get("stock_min") or {}).get("dias_restantes") is not None
+                                              else 9999))
+    if datos_ord:
+        _tabla_lotes(datos_ord, on_abrir_lote, kp)
+    _, c_b = st.columns([3, 1])
+    if c_b.button("➕ Encierre nuevo", key=f"{kp}_nuevo_enc", type="primary", width="stretch"):
+        from . import ui_gestion as _g
+        _g.dialog_encierre()
 
 
 def _precio_kg(e: Dict) -> Optional[float]:
@@ -531,34 +533,25 @@ def _pedidos_proximos(datos: List[Dict]) -> List[Dict]:
 
 
 def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> str:
+    """Totales del negocio (suma de todos los clientes). Lo de cada lote
+    va en la tabla de clientes, con su nombre."""
     tiles = []
-    num = den = 0.0
-    kg_carne = 0.0
-    for d in datos:
-        if d.get("adpv") is not None and d.get("animales"):
-            num += d["adpv"] * d["animales"]
-            den += d["animales"]
-        pes = d.get("pesadas") or []
-        if len(pes) >= 2 and d.get("animales"):
-            kg_carne += (float(pes[-1]["peso_promedio_kg"])
-                         - float(pes[0]["peso_promedio_kg"])) * d["animales"]
-    if den:
-        tiles.append(_tile("GANANCIA DIARIA", _num(num / den, 2),
-                           "kg/día promedio, medida en balanza"))
-    if kg_carne:
-        tiles.append(_tile("KG DE CARNE GANADOS", _num(kg_carne, 0),
-                           "entre pesadas, todos los lotes"))
+    n_anim = sum(d.get("animales") or 0 for d in datos)
+    tiles.append(_tile("ANIMALES EN ENCIERRE", _num(n_anim, 0),
+                       f"en {len(datos)} lote{'s' if len(datos) != 1 else ''}"))
+    cortos = sorted([(d["stock_min"]["dias_restantes"], d["cliente"]) for d in datos
+                     if (d.get("stock_min") or {}).get("dias_restantes") is not None
+                     and d["stock_min"]["dias_restantes"] <= 10])
+    tiles.append(_tile("SIN ALIMENTO EN 10 DÍAS", _num(len(cortos), 0),
+                       ("lote" + ("s" if len(cortos) != 1 else "") + ": "
+                        + ", ".join(c for _, c in cortos[:3]) + ("…" if len(cortos) > 3 else ""))
+                       if cortos else "ninguno, todos con alimento"))
     if pedidos:
-        kg_campo = sum(float(p.get("kg_hoy") or 0) for p in pedidos)
-        prim = pedidos[0]
-        tiles.append(_tile("ALIMENTO EN EL CAMPO",
-                           f'{_num(kg_campo, 0)}<span style="font-size:14px"> kg</span>',
-                           f"primero se termina {prim['cliente']}, el {_dm(prim['fecha'])}"))
         kg30 = sum(p["kg30"] for p in pedidos)
         plata = sum(p["plata30"] or 0 for p in pedidos)
         tiles.append(_tile("VENTA PRÓXIMOS 30 DÍAS",
                            f'{_num(kg30, 0)}<span style="font-size:14px"> kg</span>',
-                           (f"≈ ${_num(plata, 0)} sin IVA, " if plata else "") + "estimado por consumo"))
+                           (f"≈ ${_num(plata, 0)} sin IVA, " if plata else "") + "según lo que comen"))
     ini_mes = hoy.replace(day=1).isoformat()
     filas = _sql("SELECT kg_total, precio_total FROM entregas_producto WHERE fecha_entrega >= ?",
                  (ini_mes,))
@@ -1155,13 +1148,20 @@ def _tabla_lotes(datos: List[Dict], on_abrir_lote, kp: str) -> None:
             "Lote": d["lote"].get("identificador") or "",
             "Animales": d.get("animales"),
             "Día": d.get("dia"),
-            "Peso kg": round(d["peso"]) if d.get("peso") else None,
+            "Últ. peso kg": round(d["peso"]) if d.get("peso") else None,
             "Ganancia": round(d["adpv"], 2) if d.get("adpv") is not None else None,
             "Alimento (días)": int(round(sm["dias_restantes"])) if sm.get("dias_restantes") is not None else None,
+            "Producto": sm.get("producto") or "",
+            "Se termina": _dm(_fecha(sm.get("fecha_agotamiento"))) if sm.get("fecha_agotamiento") else "",
+            "Próx. 30 días kg": int(round(float(sm.get("consumo_diario_kg") or 0) * 30)) or None,
             "Control": {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴"}.get(ctrl.lower(), "⚪"),
         })
     df = pd.DataFrame(filas)
-    st.caption("Tocá una fila para abrir la ficha. Arriba, los que se quedan antes sin alimento.")
+    orden = ["Cliente", "Alimento (días)", "Se termina", "Control", "Ganancia", "Animales",
+             "Día", "Últ. peso kg", "Lote", "Producto", "Próx. 30 días kg"]
+    df = df[[c for c in orden if c in df.columns]]
+    st.caption("Tocá una fila para abrir la ficha del lote. Arriba, los que se quedan antes sin alimento. "
+               "Control: 🟢 bien · 🟡 mirar · 🔴 urgente · ⚪ sin control todavía.")
     ev = st.dataframe(
         df, hide_index=True, width="stretch", on_select="rerun",
         selection_mode="single-row", key=f"{kp}_tabla_lotes",

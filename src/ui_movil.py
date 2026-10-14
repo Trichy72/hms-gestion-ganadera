@@ -486,7 +486,7 @@ def _grafico_peso(pesadas: List[Dict], adpv_proy: Optional[float],
         g.append(f'<text x="{X(proy[0])-4:.1f}" y="{Y(proy[1])-10:.1f}" font-size="12" font-weight="700" style="fill:var(--hm-est)" text-anchor="end">~{proy[1]:.0f} est.</text>')
         g.append(f'<text x="{X(proy[0]):.1f}" y="{H-4}" font-size="11" style="fill:var(--hm-sub)" text-anchor="end">{_dm(proy[0])}</text>')
     return (
-        f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" '
+        f'<svg viewBox="0 0 {W} {H}" width="100%" style="max-height:300px;display:block;margin:0 auto" role="img" '
         f'aria-label="Evolución del peso promedio del lote">{"".join(g)}</svg>'
     )
 

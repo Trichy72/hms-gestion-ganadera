@@ -14,3 +14,6 @@ maxMessageSize = 2000
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+primaryColor = "#2E7D32"

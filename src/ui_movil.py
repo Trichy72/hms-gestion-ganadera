@@ -258,7 +258,7 @@ def _lotes_activos() -> List[Dict]:
     return out
 
 
-def render_inicio(on_abrir_lote) -> None:
+def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     """Pantalla de inicio. `on_abrir_lote(lote_id)` se llama cuando
     Mauricio toca "Ver ficha" en una tarjeta."""
     estilos()
@@ -325,10 +325,10 @@ def render_inicio(on_abrir_lote) -> None:
     st.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
                 unsafe_allow_html=True)
     if not datos:
-        st.info("No hay lotes activos. Cargá un encierre en Clientes → Lotes.")
+        st.info("No hay lotes activos. Cargá un encierre en la pestaña Lotes.")
     for d in datos:
         _tarjeta_lote(d)
-        if st.button("Ver ficha", key=f"hm_ver_{d['id']}", width="stretch"):
+        if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):
             on_abrir_lote(d["id"])
 
     # Agenda
@@ -440,7 +440,8 @@ def _grafico_peso(pesadas: List[Dict], adpv_proy: Optional[float],
     )
 
 
-def render_ficha(lote_id: int, on_volver) -> None:
+def render_ficha(lote_id: int, on_volver, kp: str = "hm",
+                 texto_volver: str = "← Volver") -> None:
     estilos()
     hoy = date.today()
     lote = db.obtener_lote(lote_id)
@@ -449,7 +450,7 @@ def render_ficha(lote_id: int, on_volver) -> None:
         return
     d = datos_lote(lote, hoy)
 
-    if st.button("← Volver al inicio", key="hm_volver"):
+    if st.button(texto_volver, key=f"{kp}_volver"):
         on_volver()
 
     # Cabecera con línea de tiempo
@@ -586,6 +587,21 @@ def render_ficha(lote_id: int, on_volver) -> None:
         except Exception as e:
             st.caption(f"No se pudo mostrar el plan: {e}")
 
+    # Acciones de carga
+    try:
+        from . import ui_gestion as _g
+        _g.acciones_lote(lote, d, kp)
+    except Exception as e:
+        st.caption(f"No se pudieron mostrar las acciones: {e}")
+
+    # Ración vigente, movimientos y uniformidad
+    try:
+        _seccion_racion(lote_id, d)
+        _seccion_movimientos(lote_id)
+        _seccion_uniformidad(d)
+    except Exception as e:
+        st.caption(f"No se pudo mostrar una sección: {e}")
+
     # Informes
     inf = _sql("SELECT * FROM informes_lote WHERE lote_id = ? ORDER BY fecha_creacion DESC LIMIT 5", (lote_id,))
     h = '<div class="hm"><div class="hm-lbl">INFORMES AL CLIENTE</div><div class="hm-card">'
@@ -597,3 +613,97 @@ def render_ficha(lote_id: int, on_volver) -> None:
         pp = d.get("proxima_pesada")
         h += f'<div class="hm-sub">Todavía no hay. El primero sale después de la pesada{" del " + _dm(pp) if pp else ""}.</div>'
     st.markdown(h + "</div></div>", unsafe_allow_html=True)
+
+
+def _seccion_racion(lote_id: int, d: Dict) -> None:
+    try:
+        dietas = db.listar_dietas(lote_id) or []
+    except Exception:
+        dietas = []
+    hoy = date.today().isoformat()
+    vig = [x for x in dietas if str(x.get("fecha") or "")[:10] <= hoy]
+    if not vig:
+        return
+    dv = sorted(vig, key=lambda x: str(x.get("fecha")))[-1]
+    comp = dv.get("composicion") or []
+    if not comp:
+        try:
+            comp = json.loads(dv.get("composicion_json") or "[]")
+        except Exception:
+            comp = []
+    filas = ""
+    total = 0.0
+    for c in comp:
+        kg = float(c.get("kg_tal_cual") or 0)
+        total += kg
+        filas += (f'<tr><td>{_e(c.get("nombre"))}</td>'
+                  f'<td>{_num(c.get("pct_tal_cual"), 0) + " %" if c.get("pct_tal_cual") else "—"}</td>'
+                  f'<td>{_num(kg, 2) if kg else "—"}</td></tr>')
+    factor = None
+    sm = d.get("stock_min") or {}
+    ci = sm.get("consumo_info") or {}
+    if ci.get("factor_peso_vivo") and abs(ci["factor_peso_vivo"] - 1) > 0.005:
+        factor = ci["factor_peso_vivo"]
+    nota = ""
+    if factor and total:
+        nota = (f'<div class="hm-sub" style="margin-top:6px">Formulada para el peso del '
+                f'{_dm(_fecha(dv.get("fecha")))}. Con el peso estimado de hoy '
+                f'({_num(ci.get("peso_estimado_kg"), 0)} kg) comen ~{_num(total * factor, 1)} kg/cab.</div>')
+    st.markdown(
+        f'<div class="hm"><div class="hm-lbl">RACIÓN VIGENTE · desde el {_dm(_fecha(dv.get("fecha")))}</div>'
+        f'<div class="hm-card"><table class="hm-tab"><tr><th>Ingrediente</th><th>%</th><th>kg/cab</th></tr>'
+        f'{filas}<tr><td><b>Total</b></td><td></td><td><b>{_num(total, 2)}</b></td></tr></table>{nota}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _seccion_movimientos(lote_id: int) -> None:
+    try:
+        movs = db.listar_movimientos_lote(lote_id) or []
+    except Exception:
+        movs = []
+    movs = [m for m in movs if m.get("tipo") != "conteo_drone"]
+    if not movs:
+        return
+    lab = getattr(db, "MOVIMIENTO_LABELS", {})
+    h = '<div class="hm"><div class="hm-lbl">MOVIMIENTOS DE HACIENDA</div><div class="hm-card">'
+    for m in movs[-6:][::-1]:
+        h += (f'<div class="hm-ag"><div class="d">{_dm(_fecha(m.get("fecha")))}</div>'
+              f'<div>{_e(lab.get(m.get("tipo"), m.get("tipo")))} · {_e(m.get("cantidad"))} '
+              f'{_e(m.get("detalles") or "")}</div></div>')
+    st.markdown(h + "</div></div>", unsafe_allow_html=True)
+
+
+def _seccion_uniformidad(d: Dict) -> None:
+    """Solo si la última pesada trae el peso de cada animal."""
+    pes = [p for p in d.get("pesadas") or [] if p.get("pesos_individuales")]
+    if not pes:
+        return
+    p = pes[-1]
+    v = sorted(float(x) for x in p["pesos_individuales"] if x)
+    if len(v) < 5:
+        return
+    n = len(v)
+    prom = sum(v) / n
+    desv = (sum((x - prom) ** 2 for x in v) / (n - 1)) ** 0.5
+    cv = desv / prom * 100
+
+    def q(f):
+        i = (n - 1) * f
+        a = int(i)
+        b = min(a + 1, n - 1)
+        return v[a] + (v[b] - v[a]) * (i - a)
+
+    atras = sum(1 for x in v if x < prom * 0.9)
+    est = "verde" if cv < 10 else ("amarillo" if cv < 15 else "rojo")
+    fg, bg = ESTADO_COLOR[est]
+    st.markdown(
+        f'<div class="hm"><div class="hm-lbl">UNIFORMIDAD · pesada del {_dm(_fecha(p.get("fecha")))}</div>'
+        f'<div class="hm-card"><div class="hm-kpis">'
+        f'<div class="hm-k"><div class="n">CV</div><div class="hm-big" style="color:{fg}">{_num(cv, 1)} %</div></div>'
+        f'<div class="hm-k"><div class="n">10 % MÁS LIVIANO</div><div class="hm-big">{_num(q(.1), 0)}</div><div class="f">kg o menos</div></div>'
+        f'<div class="hm-k"><div class="n">QUEDARON ATRÁS</div><div class="hm-big">{atras}</div><div class="f">10 % bajo el promedio</div></div>'
+        f'</div><div class="hm-sub" style="margin-top:8px">{n} animales pesados de a uno. '
+        f'Mediana {_num(q(.5), 0)} kg, el 10 % más pesado arriba de {_num(q(.9), 0)} kg.</div></div></div>',
+        unsafe_allow_html=True,
+    )

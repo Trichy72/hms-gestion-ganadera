@@ -1850,17 +1850,24 @@ with st.sidebar:
 # ---------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------
-(tab_hoy, tab_clientes, tab_inicio, tab_evo, tab_avanzado,
- tab_ia, tab_config, tab_help) = st.tabs([
+(tab_hoy, tab_lotes_m, tab_clientes_m, tab_mas) = st.tabs([
     ":material/home: Inicio",
-    ":material/groups: Clientes/Lotes",
-    ":material/dashboard: Panel completo",
-    ":material/monitoring: Evolución",
-    ":material/science: Análisis",
-    ":material/neurology: Asesor IA",
-    ":material/settings: Configuración",
-    ":material/help: Ayuda",
+    ":material/grid_view: Lotes",
+    ":material/groups: Clientes",
+    ":material/more_horiz: Más",
 ])
+# Las pantallas anteriores quedan completas dentro de "Más".
+with tab_mas:
+    (tab_inicio, tab_clientes, tab_evo, tab_avanzado,
+     tab_ia, tab_config, tab_help) = st.tabs([
+        ":material/dashboard: Panel completo",
+        ":material/folder_open: Clientes y lotes (completo)",
+        ":material/monitoring: Evolución",
+        ":material/science: Análisis",
+        ":material/neurology: Asesor IA",
+        ":material/settings: Configuración",
+        ":material/help: Ayuda",
+    ])
 
 
 # ------------------------- INICIO (celular) ---------------------------
@@ -1880,11 +1887,27 @@ with tab_hoy:
 
     try:
         if st.session_state.get("hm_lote"):
-            _ui_movil.render_ficha(st.session_state["hm_lote"], _hm_volver)
+            _ui_movil.render_ficha(st.session_state["hm_lote"], _hm_volver,
+                                   kp="hm", texto_volver="← Inicio")
         else:
             _ui_movil.render_inicio(_hm_abrir)
     except Exception as _e_hm:
         st.error(f"No se pudo armar la pantalla de inicio: {_e_hm}")
+
+# ------------------------- LOTES y CLIENTES (celular) -----------------
+with tab_lotes_m:
+    try:
+        from src import ui_gestion as _ui_gestion
+        _ui_gestion.render_lotes("lt")
+    except Exception as _e_lt:
+        st.error(f"No se pudo armar la pantalla de lotes: {_e_lt}")
+
+with tab_clientes_m:
+    try:
+        from src import ui_gestion as _ui_gestion
+        _ui_gestion.render_clientes("cl")
+    except Exception as _e_cl:
+        st.error(f"No se pudo armar la pantalla de clientes: {_e_cl}")
 
 
 # ----------------------------- INICIO ---------------------------------
@@ -4869,8 +4892,7 @@ with tab_inicio:
                 if st.button("👉 Ir a Clientes/Lotes", key="qa_manual",
                               width="stretch"):
                     st.info(
-                        "Hacé click en **🏢 Clientes/Lotes** → tab Lotes → "
-                        "seleccionar el lote → expander **'✏️ Cargar pesada manual'**."
+                        "Pestaña **Lotes** → **Ver ficha** del lote → botón **⚖ Pesada**."
                     )
 
             with qa3:
@@ -4887,7 +4909,7 @@ with tab_inicio:
                 if st.button("👉 Ir a Asesor IA", key="qa_ia",
                               width="stretch"):
                     st.info(
-                        "Hacé click en **🤖 Asesor IA 🍽️** de arriba. "
+                        "Pestaña **Más** → **Asesor IA**. "
                         "El agente formula dietas, diagnostica problemas y "
                         "te genera informes en PDF."
                     )
@@ -4906,8 +4928,8 @@ with tab_inicio:
                 if st.button("👉 Ir a Historial", key="qa_hist",
                               width="stretch"):
                     st.info(
-                        "Hacé click en **📚 Historial** de arriba. "
-                        "Seleccionás cliente y lote, ves toda la evolución."
+                        "Pestaña **Lotes** → **Ver ficha**: ahí está la evolución "
+                        "del peso, el alimento y los movimientos del lote."
                     )
 
             st.caption(

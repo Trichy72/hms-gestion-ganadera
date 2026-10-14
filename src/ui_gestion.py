@@ -1,0 +1,474 @@
+"""Pestañas Lotes y Clientes con el diseño nuevo, y las cargas de campo.
+
+Pensado para el celular: tarjetas, botones grandes y formularios cortos
+que se abren en una ventana (pesada, entrega, movimiento, encierre,
+cierre de lote, cliente). La gestión completa anterior sigue en la
+pestaña "Más".
+"""
+from __future__ import annotations
+
+from datetime import date
+from typing import Dict, List, Optional
+
+import streamlit as st
+
+from . import database as db
+from . import ui_movil as um
+
+CATEGORIAS = ["novillo", "vaquillona", "ternero", "ternera", "toro", "vaca"]
+COMEDEROS = {
+    "Silo comedero (autoconsumo)": "silocomedero",
+    "Comedero lineal": "lineal",
+    "Otro": "otro",
+}
+METODOS_PESADA = {
+    "Balanza": "balanza",
+    "Estimación visual / cinta": "estimacion",
+}
+MOVIMIENTOS = {
+    "Muerte": "muerte",
+    "Venta (gordo / descarte)": "venta",
+    "Ingreso (compra)": "ingreso",
+}
+
+
+def _iso(d: date) -> str:
+    return d.strftime("%Y-%m-%d")
+
+
+def _refrescar():
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+    st.rerun()
+
+
+def _nav(kp: str) -> Dict:
+    """Estado de navegación de cada pestaña (lote o cliente abierto)."""
+    k = f"{kp}_nav"
+    if k not in st.session_state:
+        st.session_state[k] = {}
+    return st.session_state[k]
+
+
+# =====================================================================
+# Formularios (ventanas)
+# =====================================================================
+@st.dialog("Cargar pesada")
+def dialog_pesada(lote_id: int):
+    lote = db.obtener_lote(lote_id) or {}
+    try:
+        cant_v = int(db.cantidad_vigente_lote(lote_id) or 0)
+    except Exception:
+        cant_v = int(lote.get("cantidad_inicial") or 0)
+    with st.form("f_pesada"):
+        f = st.date_input("Fecha", value=date.today(), format="DD/MM/YYYY")
+        met = st.selectbox("Cómo se pesó", list(METODOS_PESADA))
+        cant = st.number_input("Animales pesados", min_value=1, value=max(cant_v, 1), step=1)
+        modo = st.radio("Dato que tenés", ["Peso promedio", "Peso total"], horizontal=True)
+        valor = st.number_input("kg", min_value=0.0, step=1.0, format="%.1f")
+        notas = st.text_area("Notas (grupos, animales a revisar…)", height=80)
+        ok = st.form_submit_button("Guardar pesada", type="primary", width="stretch")
+    if ok:
+        if valor <= 0:
+            st.error("Falta el peso.")
+            return
+        prom = valor if modo == "Peso promedio" else valor / cant
+        total = valor if modo == "Peso total" else valor * cant
+        db.guardar_pesada(lote_id, _iso(f), METODOS_PESADA[met], int(cant),
+                          round(prom, 2), round(total, 1), None, notas=notas)
+        st.success(f"Guardada: {um._num(prom)} kg promedio.")
+        _refrescar()
+
+
+@st.dialog("Cargar entrega de alimento")
+def dialog_entrega(lote_id: int):
+    lote = db.obtener_lote(lote_id) or {}
+    try:
+        from .stock_producto import listar_productos_lote
+        prods = listar_productos_lote(lote_id) or []
+    except Exception:
+        prods = []
+    prods = [p for p in prods if p] + ["Otro producto"]
+    with st.form("f_entrega"):
+        f = st.date_input("Fecha de entrega", value=date.today(), format="DD/MM/YYYY")
+        prod = st.selectbox("Producto", prods)
+        otro = st.text_input("Nombre (si elegiste otro)")
+        formato = st.radio("Formato", ["Bolsas", "Granel"], horizontal=True)
+        c1, c2 = st.columns(2)
+        bolsas = c1.number_input("Bolsas", min_value=0, step=1)
+        kg_bolsa = c2.number_input("kg por bolsa", min_value=0.0, value=30.0, step=1.0)
+        kg_granel = st.number_input("kg totales (si es granel)", min_value=0.0, step=10.0)
+        notas = st.text_input("Notas (n.º de factura, remito…)")
+        ok = st.form_submit_button("Guardar entrega", type="primary", width="stretch")
+    if ok:
+        nombre = otro.strip() if prod == "Otro producto" else prod
+        if not nombre:
+            st.error("Falta el producto.")
+            return
+        if formato == "Bolsas":
+            kg = bolsas * kg_bolsa
+            fmt = "bolsa"
+        else:
+            kg = kg_granel
+            fmt = "granel"
+        if kg <= 0:
+            st.error("Falta la cantidad.")
+            return
+        db.crear_entrega(lote["cliente_id"], nombre, float(kg), _iso(f),
+                         lote_id=lote_id, formato=fmt,
+                         cantidad_bolsas=float(bolsas) if fmt == "bolsa" else 0,
+                         kg_por_bolsa=float(kg_bolsa), notas=notas)
+        st.success(f"Guardada: {um._num(kg, 0)} kg de {nombre}.")
+        _refrescar()
+
+
+@st.dialog("Movimiento de hacienda")
+def dialog_movimiento(lote_id: int):
+    with st.form("f_mov"):
+        tipo = st.selectbox("Qué pasó", list(MOVIMIENTOS))
+        f = st.date_input("Fecha", value=date.today(), format="DD/MM/YYYY")
+        cant = st.number_input("Cantidad de animales", min_value=1, value=1, step=1)
+        kg = st.number_input("kg por animal (opcional)", min_value=0.0, step=1.0)
+        det = st.text_input("Detalle (causa, caravana, destino…)")
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        db.crear_movimiento_lote(lote_id, _iso(f), MOVIMIENTOS[tipo], int(cant),
+                                 kg_promedio_animal=kg or None, detalles=det)
+        st.success("Guardado.")
+        _refrescar()
+
+
+@st.dialog("Cerrar lote")
+def dialog_cerrar(lote_id: int):
+    lote = db.obtener_lote(lote_id) or {}
+    try:
+        cant_v = int(db.cantidad_vigente_lote(lote_id) or 0)
+    except Exception:
+        cant_v = int(lote.get("cantidad_inicial") or 0)
+    st.caption("El lote deja de aparecer en Inicio y deja de generar avisos. "
+               "Sus datos quedan guardados.")
+    with st.form("f_cerrar"):
+        f = st.date_input("Fecha de salida", value=date.today(), format="DD/MM/YYYY")
+        peso = st.number_input("Peso de salida promedio (si se pesó)", min_value=0.0, step=1.0)
+        cant = st.number_input("Animales que salieron", min_value=0, value=cant_v, step=1)
+        notas = st.text_input("Notas (destino, precio, rendimiento…)")
+        conf = st.checkbox("Confirmo que el lote terminó")
+        ok = st.form_submit_button("Cerrar lote", type="primary", width="stretch")
+    if ok:
+        if not conf:
+            st.error("Marcá la confirmación.")
+            return
+        if peso > 0 and cant > 0:
+            db.guardar_pesada(lote_id, _iso(f), "balanza", int(cant), float(peso),
+                              float(peso) * cant, None, notas="Pesada de salida. " + notas)
+        campos = {"estado": "cerrado", "fecha_salida": _iso(f)}
+        if notas:
+            campos["notas"] = ((lote.get("notas") or "") + f"\nSalida {_iso(f)}: {notas}").strip()
+        db.actualizar_lote(lote_id, **campos)
+        st.success("Lote cerrado.")
+        _refrescar()
+
+
+@st.dialog("Cargar encierre nuevo")
+def dialog_encierre(cliente_id: Optional[int] = None):
+    clientes = [c for c in db.listar_clientes() if (c.get("estado") or "activo") != "baja"]
+    nombres = ["➕ Cliente nuevo"] + [c["nombre"] for c in clientes]
+    idx = 0
+    if cliente_id:
+        for i, c in enumerate(clientes):
+            if c["id"] == cliente_id:
+                idx = i + 1
+    with st.form("f_encierre"):
+        cli = st.selectbox("Cliente", nombres, index=idx)
+        c1, c2 = st.columns(2)
+        nuevo_nom = c1.text_input("Nombre (si es nuevo)")
+        nuevo_loc = c2.text_input("Localidad (si es nuevo)")
+        ident = st.text_input("Nombre del lote", placeholder="Ej.: Novillos terminación oct-26")
+        cat = st.selectbox("Categoría", CATEGORIAS)
+        c3, c4 = st.columns(2)
+        f = c3.date_input("Fecha de encierre", value=date.today(), format="DD/MM/YYYY")
+        cant = c4.number_input("Animales", min_value=1, value=30, step=1)
+        peso = st.number_input("Peso promedio al entrar (kg, si se pesó)", min_value=0.0, step=1.0)
+        com = st.selectbox("Comedero", list(COMEDEROS))
+        notas = st.text_area("Notas (orígenes, sanidad, ración de arranque…)", height=80)
+        ok = st.form_submit_button("Guardar encierre", type="primary", width="stretch")
+    if ok:
+        if cli == "➕ Cliente nuevo":
+            if not nuevo_nom.strip():
+                st.error("Falta el nombre del cliente nuevo.")
+                return
+            cid = db.crear_cliente(nuevo_nom.strip(), localidad=nuevo_loc.strip())
+        else:
+            cid = next(c["id"] for c in clientes if c["nombre"] == cli)
+        if not ident.strip():
+            ident = f"{cat.capitalize()} {f.strftime('%d/%m/%Y')}"
+        lid = db.crear_lote(cid, ident.strip(), categoria=cat, fecha_ingreso=_iso(f),
+                            cantidad_inicial=int(cant), peso_ingreso_kg=float(peso),
+                            notas=notas)
+        try:
+            db.actualizar_lote(lid, tipo_comedero_concentrado=COMEDEROS[com])
+        except Exception:
+            pass
+        if peso > 0:
+            db.guardar_pesada(lid, _iso(f), "balanza", int(cant), float(peso),
+                              float(peso) * cant, None, notas="Pesada inicial, inicio del encierre.")
+        st.success("Encierre guardado.")
+        _refrescar()
+
+
+@st.dialog("Datos del cliente")
+def dialog_cliente(cliente_id: Optional[int] = None):
+    c = db.obtener_cliente(cliente_id) if cliente_id else {}
+    c = c or {}
+    with st.form("f_cliente"):
+        nom = st.text_input("Nombre", value=c.get("nombre") or "")
+        loc = st.text_input("Localidad", value=c.get("localidad") or "")
+        est = st.text_input("Establecimiento", value=c.get("establecimiento") or "")
+        wa = st.text_input("WhatsApp", value=c.get("whatsapp") or "", placeholder="+54 9 …")
+        em = st.text_input("Email", value=c.get("email") or "")
+        cuit = st.text_input("CUIT", value=c.get("cuit") or "")
+        notas = st.text_area("Notas", value=c.get("notas") or "", height=80)
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        if not nom.strip():
+            st.error("Falta el nombre.")
+            return
+        datos = dict(nombre=nom.strip(), localidad=loc.strip(), establecimiento=est.strip(),
+                     whatsapp=wa.strip(), email=em.strip(), cuit=cuit.strip(), notas=notas)
+        if cliente_id:
+            db.actualizar_cliente(cliente_id, **datos)
+        else:
+            db.crear_cliente(**datos)
+        st.success("Guardado.")
+        _refrescar()
+
+
+@st.dialog("Dar de baja al cliente")
+def dialog_baja(cliente_id: int):
+    st.caption("Deja de aparecer en las listas y no recibe avisos. Se puede reactivar.")
+    with st.form("f_baja"):
+        motivo = st.text_input("Motivo")
+        ok = st.form_submit_button("Dar de baja", type="primary", width="stretch")
+    if ok:
+        db.actualizar_cliente(cliente_id, estado="baja", fecha_baja=_iso(date.today()),
+                              motivo_baja=motivo)
+        _refrescar()
+
+
+# =====================================================================
+# Acciones dentro de la ficha del lote
+# =====================================================================
+def acciones_lote(lote: Dict, d: Dict, kp: str) -> None:
+    lid = lote["id"]
+    st.markdown('<div class="hm"><div class="hm-lbl">CARGAR</div></div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    if c1.button("⚖ Pesada", key=f"{kp}_a_pes_{lid}", width="stretch"):
+        dialog_pesada(lid)
+    if c2.button("🌾 Entrega", key=f"{kp}_a_ent_{lid}", width="stretch"):
+        dialog_entrega(lid)
+    c3, c4 = st.columns(2)
+    if c3.button("🐄 Movimiento", key=f"{kp}_a_mov_{lid}", width="stretch"):
+        dialog_movimiento(lid)
+    if (lote.get("estado") or "activo") == "activo":
+        if c4.button("🔒 Cerrar lote", key=f"{kp}_a_cer_{lid}", width="stretch"):
+            dialog_cerrar(lid)
+    else:
+        if c4.button("↺ Reabrir lote", key=f"{kp}_a_reab_{lid}", width="stretch"):
+            db.actualizar_lote(lid, estado="activo", fecha_salida=None)
+            _refrescar()
+
+
+# =====================================================================
+# Pestaña LOTES
+# =====================================================================
+def render_lotes(kp: str = "lt") -> None:
+    um.estilos()
+    nav = _nav(kp)
+    if nav.get("lote"):
+        def volver():
+            nav.pop("lote", None)
+            st.rerun()
+        um.render_ficha(nav["lote"], volver, kp=kp, texto_volver="← Lotes")
+        return
+
+    if st.button("➕ Cargar encierre nuevo", key=f"{kp}_nuevo", type="primary", width="stretch"):
+        dialog_encierre()
+
+    ver = st.segmented_control("Ver", ["Activos", "Cerrados"], default="Activos",
+                               key=f"{kp}_filtro", label_visibility="collapsed") or "Activos"
+    hoy = date.today()
+    if ver == "Activos":
+        lotes = um._lotes_activos()
+        if not lotes:
+            st.info("No hay lotes activos.")
+        for l in lotes:
+            try:
+                d = um.datos_lote(l, hoy)
+            except Exception as e:
+                st.caption(f"{l.get('identificador')}: {e}")
+                continue
+            um._tarjeta_lote(d)
+            if st.button("Ver ficha", key=f"{kp}_ver_{l['id']}", width="stretch"):
+                nav["lote"] = l["id"]
+                st.rerun()
+    else:
+        try:
+            lotes = [l for l in db.listar_lotes() if (l.get("estado") or "") != "activo"]
+        except Exception:
+            lotes = []
+        lotes.sort(key=lambda l: str(l.get("fecha_salida") or l.get("fecha_ingreso") or ""), reverse=True)
+        if not lotes:
+            st.info("Todavía no hay lotes cerrados.")
+        for l in lotes[:30]:
+            fi, fs = um._fecha(l.get("fecha_ingreso")), um._fecha(l.get("fecha_salida"))
+            dias = (fs - fi).days if fi and fs else None
+            st.markdown(
+                f'<div class="hm"><div class="hm-card"><div class="hm-h">{um._e(l.get("cliente_nombre"))}</div>'
+                f'<div class="hm-sub">{um._e(l.get("identificador"))} · {um._dm(fi)} → {um._dm(fs)}'
+                f'{f" · {dias} días" if dias else ""}</div></div></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Ver ficha", key=f"{kp}_verc_{l['id']}", width="stretch"):
+                nav["lote"] = l["id"]
+                st.rerun()
+
+
+# =====================================================================
+# Pestaña CLIENTES
+# =====================================================================
+def render_clientes(kp: str = "cl") -> None:
+    um.estilos()
+    nav = _nav(kp)
+    if nav.get("lote"):
+        def volver_l():
+            nav.pop("lote", None)
+            st.rerun()
+        um.render_ficha(nav["lote"], volver_l, kp=kp, texto_volver="← Cliente")
+        return
+    if nav.get("cliente"):
+        _ficha_cliente(nav["cliente"], kp, nav)
+        return
+
+    if st.button("➕ Cliente nuevo", key=f"{kp}_nuevo", type="primary", width="stretch"):
+        dialog_cliente()
+    buscar = st.text_input("Buscar", key=f"{kp}_buscar", placeholder="Buscar cliente o localidad",
+                           label_visibility="collapsed")
+    ver_baja = st.toggle("Mostrar dados de baja", key=f"{kp}_baja")
+
+    clientes = db.listar_clientes()
+    try:
+        activos = db.listar_lotes(estado="activo") or []
+    except Exception:
+        activos = []
+    por_cli: Dict[int, List[Dict]] = {}
+    for l in activos:
+        por_cli.setdefault(l.get("cliente_id"), []).append(l)
+    q = (buscar or "").strip().lower()
+    filas = []
+    for c in clientes:
+        baja = (c.get("estado") or "activo") == "baja"
+        if baja and not ver_baja:
+            continue
+        if q and q not in (c.get("nombre") or "").lower() and q not in (c.get("localidad") or "").lower():
+            continue
+        filas.append((0 if por_cli.get(c["id"]) else 1, (c.get("nombre") or "").lower(), c, baja))
+    filas.sort(key=lambda x: (x[0], x[1]))
+    for _, _, c, baja in filas:
+        ls = por_cli.get(c["id"], [])
+        if ls:
+            n = 0
+            for l in ls:
+                try:
+                    n += int(db.cantidad_vigente_lote(l["id"]) or 0)
+                except Exception:
+                    n += int(l.get("cantidad_inicial") or 0)
+            linea = f'{len(ls)} lote{"s" if len(ls) > 1 else ""} activo{"s" if len(ls) > 1 else ""} · {n} animales'
+            color = um.VERDE
+        else:
+            linea = "Dado de baja" if baja else "Sin lotes activos"
+            color = "#8A948C"
+        ini = "".join(p[0] for p in (c.get("nombre") or "?").split()[:2]).upper()
+        st.markdown(
+            f'<div class="hm"><div class="hm-card"><div class="hm-row">'
+            f'<div class="hm-ico" style="background:#E6EFE3;color:{um.VERDE}">{um._e(ini)}</div>'
+            f'<div style="flex:1;min-width:0"><div class="hm-h">{um._e(c.get("nombre"))}</div>'
+            f'<div class="hm-sub">{um._e(c.get("localidad") or "")}</div></div>'
+            f'<div class="hm-sub" style="color:{color};font-weight:600;text-align:right">{um._e(linea)}</div>'
+            f'</div></div></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Abrir", key=f"{kp}_abrir_{c['id']}", width="stretch"):
+            nav["cliente"] = c["id"]
+            st.rerun()
+
+
+def _ficha_cliente(cliente_id: int, kp: str, nav: Dict) -> None:
+    c = db.obtener_cliente(cliente_id)
+    if not c:
+        nav.pop("cliente", None)
+        st.rerun()
+    if st.button("← Clientes", key=f"{kp}_volver_cli"):
+        nav.pop("cliente", None)
+        st.rerun()
+    baja = (c.get("estado") or "activo") == "baja"
+    datos = []
+    for etiqueta, campo in [("WhatsApp", "whatsapp"), ("Email", "email"), ("CUIT", "cuit"),
+                            ("Establecimiento", "establecimiento")]:
+        if c.get(campo):
+            datos.append(f'<div class="hm-ag"><div class="d" style="width:110px">{etiqueta}</div>'
+                         f'<div>{um._e(c[campo])}</div></div>')
+    if not c.get("whatsapp"):
+        datos.append('<div class="hm-ag"><div class="d" style="width:110px">WhatsApp</div>'
+                     '<div class="hm-sub">Falta cargarlo (lo necesitan los avisos)</div></div>')
+    nota_html = f'<div class="hm-nota">{um._e(c["notas"])}</div>' if c.get("notas") else ""
+    st.markdown(
+        f'<div class="hm"><div class="hm-top"><div class="t">{um._e(c.get("nombre"))}</div>'
+        f'<div class="s">{um._e(c.get("localidad") or "")}{" · dado de baja" if baja else ""}</div></div>'
+        f'<div class="hm-lbl">DATOS</div><div class="hm-card">{"".join(datos)}'
+        f'{nota_html}'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+    c1, c2 = st.columns(2)
+    if c1.button("✏️ Editar datos", key=f"{kp}_edit_{cliente_id}", width="stretch"):
+        dialog_cliente(cliente_id)
+    if not baja:
+        if c2.button("➕ Encierre nuevo", key=f"{kp}_enc_{cliente_id}", width="stretch"):
+            dialog_encierre(cliente_id)
+
+    try:
+        lotes = db.listar_lotes(cliente_id=cliente_id) or []
+    except Exception:
+        lotes = []
+    act = [l for l in lotes if (l.get("estado") or "") == "activo"]
+    cer = [l for l in lotes if (l.get("estado") or "") != "activo"]
+    st.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>', unsafe_allow_html=True)
+    if not act:
+        st.caption("Sin lotes activos.")
+    for l in act:
+        try:
+            um._tarjeta_lote(um.datos_lote(l))
+        except Exception as e:
+            st.caption(str(e))
+        if st.button("Ver ficha", key=f"{kp}_vl_{l['id']}", width="stretch"):
+            nav["lote"] = l["id"]
+            st.rerun()
+    if cer:
+        st.markdown('<div class="hm"><div class="hm-lbl">LOTES ANTERIORES</div></div>', unsafe_allow_html=True)
+        for l in cer:
+            fi, fs = um._fecha(l.get("fecha_ingreso")), um._fecha(l.get("fecha_salida"))
+            if st.button(f"{l.get('identificador')} · {um._dm(fi)} → {um._dm(fs)}",
+                         key=f"{kp}_vc_{l['id']}", width="stretch"):
+                nav["lote"] = l["id"]
+                st.rerun()
+
+    if not baja:
+        st.write("")
+        if st.button("Dar de baja al cliente", key=f"{kp}_baja_{cliente_id}"):
+            dialog_baja(cliente_id)
+    else:
+        if st.button("Reactivar cliente", key=f"{kp}_react_{cliente_id}"):
+            db.actualizar_cliente(cliente_id, estado="activo", fecha_baja=None, motivo_baja=None)
+            _refrescar()

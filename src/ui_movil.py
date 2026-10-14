@@ -379,9 +379,20 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     # Muchos del mismo tipo: una sola tarjeta con la lista
     for ico, titulo in (("↓", "Pedir alimento"), ("⚖", "Pesada mensual")):
         grupo = [t for t in tareas if t[2] == ico]
+        def _clave_fecha(t):
+            x = t[4].split("el ")[-1].rstrip(".")
+            try:
+                dd, mm = x.split("/")[:2]
+                return (int(mm), int(dd))
+            except Exception:
+                return (99, 99)
+        grupo.sort(key=_clave_fecha)
         if len(grupo) > 3:
             resto = [t for t in tareas if t[2] != ico]
-            det = "; ".join(f"{t[3].split(' · ')[0]} ({t[4].split('el ')[-1].rstrip('.')})" for t in grupo)
+            det = "; ".join(f"{t[3].split(' · ')[0]} ({t[4].split('el ')[-1].rstrip('.')})" for t in grupo[:6])
+            if len(grupo) > 6:
+                det += f" y {len(grupo) - 6} más (ver tabla de clientes)"
+            det = ("Se terminan: " if ico == "↓" else "Pesar: ") + det
             pos = min(i for i, t in enumerate(tareas) if t[2] == ico)
             resto.insert(min(pos, len(resto)), (grupo[0][0], grupo[0][1], ico,
                                                 f"{titulo}: {len(grupo)} lotes", det))
@@ -390,7 +401,8 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         nombres = [t[3].split(" · ")[0] for t in sin_wa]
         tareas.append(("var(--hm-chip)", "var(--hm-sub)", "☎",
                        f"Falta el WhatsApp de {len(nombres)} cliente{'s' if len(nombres) != 1 else ''}",
-                       ", ".join(nombres) + ". Cargalo en Clientes para mandar controles y avisos."))
+                       ", ".join(nombres[:5]) + (f" y {len(nombres) - 5} más" if len(nombres) > 5 else "")
+                       + ". Cargalo en Clientes para mandar controles y avisos."))
     n_anim = sum(d.get("animales") or 0 for d in datos)
     clientes = sorted({d["cliente"] for d in datos if d.get("cliente")})
     n_cli = len(clientes)
@@ -456,7 +468,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 ag.append((d["fecha_peso"] + timedelta(days=15), f"Seguimiento de 15 días · {d['cliente']}"))
             if d.get("proxima_pesada"):
                 ag.append((d["proxima_pesada"], f"Pesada mensual · {d['cliente']}"))
-        ag = sorted([a for a in ag if hoy - timedelta(days=1) <= a[0] <= hoy + timedelta(days=14)])
+        ag = sorted([a for a in ag if hoy <= a[0] <= hoy + timedelta(days=14)])
         # Agrupar la misma tarea del mismo día: "Pesada mensual · A, B, C"
         agr: Dict = {}
         for f_, t_ in ag:
@@ -469,7 +481,9 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         if ag:
             for f, tarea, clis in ag:
                 h += (f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div>'
-                      f'<div><b>{_e(", ".join(clis))}</b> · {_e(tarea)}</div></div>')
+                      f'<div><b>{_e(", ".join(clis[:4]))}</b>'
+                      + (f' y {len(clis) - 4} más' if len(clis) > 4 else '')
+                      + f' · {_e(tarea)}</div></div>')
             if mas_ag:
                 h += f'<div class="hm-sub" style="padding-top:8px">… y {mas_ag} más en estas dos semanas</div>'
         else:
@@ -545,13 +559,21 @@ def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> str:
         if fa:
             prox.append((fa - timedelta(days=2), d["cliente"], sm.get("producto") or "", fa))
     prox.sort()
-    if prox:
+    pronto = [p for p in prox if p[3] <= hoy + timedelta(days=10)]
+    if len(pronto) > 1:
+        # Varios clientes: cuántos pedidos vienen y a quién, en orden
+        lista = ", ".join(f"{p[1]} ({'hoy' if p[0] <= hoy else f'{p[0].day}/{p[0].month}'})"
+                          for p in pronto[:5])
+        tiles.append(_tile("PEDIDOS DE ALIMENTO · PRÓX. 10 DÍAS",
+                           f"{len(pronto)} clientes",
+                           f"Pedir en este orden: {_e(lista)}"
+                           + (f" y {len(pronto) - 5} más." if len(pronto) > 5 else ".")))
+    elif prox:
         f_ped, cli, prod, fa = prox[0]
         cuando = "hoy" if f_ped <= hoy else f"el {_dia_corto(f_ped).lower()}/{f_ped.month}"
-        otros = [p for p in prox[1:] if p[0] <= hoy + timedelta(days=10)]
-        sub = (f"{prod}: se le termina el {_dm(fa)}. Pedilo {cuando} para que no le falte."
-               + (f" Después: {', '.join(p[1] for p in otros[:3])}." if otros else ""))
-        tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", _e(cli), sub))
+        tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", _e(cli),
+                           f"{_e(prod)}: se le termina el {_dm(fa)}. "
+                           f"Pedilo {cuando} para que no le falte."))
     else:
         tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", "—",
                            "Cargá las entregas para saber cuándo se le termina a cada uno."))

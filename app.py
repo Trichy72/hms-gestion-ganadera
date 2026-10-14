@@ -1691,23 +1691,19 @@ if _logo_path_hdr.exists():
     )
 
 st.markdown(
-    f'<div style="display:flex;flex-direction:row;'
-    f'justify-content:space-between;align-items:center;'
-    f'padding:10px 0;border-bottom:1px solid rgba(128,128,128,0.25);'
-    f'margin-bottom:8px;">'
-    f'<div style="display:flex;align-items:center;gap:14px;">'
-    f'{_logo_html_hdr}'
-    f'<div>'
-    f'<div style="font-size:26px;font-weight:700;color:#8BC53F;'
-    f'line-height:1.15;letter-spacing:0.01em;">HMS Nutrición Animal</div>'
-    f'<div style="font-size:14px;color:#9aa0a8;">'
-    f'Asesoría nutricional a campo</div>'
-    f'</div></div>'
-    f'<div style="text-align:right;">'
-    f'<div style="font-size:14px;">'
-    f'{_saludo_hdr}, Mauricio · {_fecha_es_hdr}</div>'
-    f'<div style="font-size:12px;color:#8a8f98;">{_hdr_stats}</div>'
-    f'</div></div>',
+    '<style>'
+    '.block-container{padding-top:3.4rem !important;}'
+    '@media (max-width:640px){.block-container{padding-left:.8rem !important;'
+    'padding-right:.8rem !important;}}'
+    '</style>'
+    f'<div style="display:flex;justify-content:space-between;align-items:center;'
+    f'gap:10px;padding:6px 0 10px;">'
+    f'<div style="display:flex;align-items:center;gap:10px;">'
+    f'{_logo_html_hdr.replace("height:60px", "height:30px").replace("max-width:220px", "max-width:110px")}'
+    f'<div style="font-weight:700;font-size:17px;letter-spacing:.06em;">'
+    f'HMS <span style="color:#8BC53F">·</span> LOTES</div></div>'
+    f'<div style="font-size:12px;color:#8a8f98;text-align:right;">'
+    f'{_fecha_es_hdr}</div></div>',
     unsafe_allow_html=True,
 )
 
@@ -1855,14 +1851,13 @@ with st.sidebar:
 # Tabs
 # ---------------------------------------------------------------------
 (tab_hoy, tab_clientes, tab_inicio, tab_evo, tab_avanzado,
- tab_ia, tab_historial, tab_config, tab_help) = st.tabs([
+ tab_ia, tab_config, tab_help) = st.tabs([
     ":material/home: Inicio",
     ":material/groups: Clientes/Lotes",
     ":material/dashboard: Panel completo",
     ":material/monitoring: Evolución",
     ":material/science: Análisis",
     ":material/neurology: Asesor IA",
-    ":material/history: Historial",
     ":material/settings: Configuración",
     ":material/help: Ayuda",
 ])
@@ -4165,7 +4160,8 @@ with tab_inicio:
                             f"{_n_anim_g} animales"
                         )
                     else:
-                        _linea_lote_g = "Sin lotes activos"
+                        # Sin lote activo no ocupa lugar en el panel.
+                        continue
                     # Iniciales para el avatar
                     _partes_nom_g = [p for p in _nom_g.split() if p]
                     _inic_g = "".join(
@@ -13956,20 +13952,6 @@ with tab_avanzado:
                     st.info(s)
 
 
-# ----------------------------- HISTORIAL ------------------------------
-with tab_historial:
-    st.markdown("### 📚 Historial completo del lote")
-    st.info(
-        "El historial completo de cada lote (peso, dietas, "
-        "movimientos, cargas del comedero y gráfico comparativo) "
-        "ahora vive dentro de la ficha del lote.\n\n"
-        "👉 Andá a **🏢 Clientes/Lotes** → seleccioná el lote → "
-        "scroleá hasta el final."
-    )
-    st.caption(
-        "Esta pestaña queda disponible para futuras vistas "
-        "comparativas entre lotes."
-    )
 # ----------------------------- ASESOR IA ------------------------------
 with tab_ia:
     st.markdown(

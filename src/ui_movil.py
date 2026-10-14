@@ -66,6 +66,19 @@ def _dm(d: Optional[date]) -> str:
     return d.strftime("%d/%m") if d else "—"
 
 
+def _saludo() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        h = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).hour
+    except Exception:
+        h = datetime.now().hour
+    if 6 <= h < 13:
+        return "Buen día"
+    if 13 <= h < 20:
+        return "Buenas tardes"
+    return "Buenas noches"
+
+
 def _dia_corto(d: date) -> str:
     return f"{DIAS_SEM[d.weekday()]} {d.day}"
 
@@ -290,7 +303,7 @@ def render_inicio(on_abrir_lote) -> None:
     st.markdown(
         f'<div class="hm"><div class="hm-top">'
         f'<div class="s">{_dia_corto(hoy)} {MESES[hoy.month - 1]}</div>'
-        f'<div class="t">Buen día, Mauri</div>'
+        f'<div class="t">{_saludo()}, Mauri</div>'
         f'<div class="s">Tenés <b>{len(datos)} lote{"s" if len(datos) != 1 else ""} '
         f'activo{"s" if len(datos) != 1 else ""}</b> con <b>{n_anim} animales</b>'
         f' y <b>{len(tareas)} cosa{"s" if len(tareas) != 1 else ""} para mirar</b>.</div>'

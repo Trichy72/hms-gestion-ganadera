@@ -251,6 +251,8 @@ _CSS = f"""
 .hm-clima {{ display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; text-align: center; font-size: 12px; }}
 .hm-clima .ico {{ font-size: 18px; line-height: 1.6; }}
 .hm-clima .mx {{ font-weight: 700; }} .hm-clima .mn {{ color: var(--hm-sub); }}
+.hm-climat td, .hm-climat th {{ text-align: center; padding: 5px 2px; }}
+.hm-climat td:first-child {{ text-align: left; }}
 .hm-tl {{ display: grid; grid-template-columns: 0.9fr 1.05fr 1.15fr 0.9fr 1fr; gap: 4px; margin-top: 8px; }}
 .hm-tl .b {{ height: 6px; border-radius: 3px; }}
 .hm-tl .x {{ font-size: 10.5px; letter-spacing: -.2px; overflow-wrap: normal; word-break: keep-all; color: #C9D8CC; margin-top: 5px; line-height: 1.25; }}
@@ -368,6 +370,26 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     except Exception as e:
         log.info("ui_movil: clima: %s", e)
 
+    # Orden por urgencia y avisos agrupados (con muchos clientes no se repiten)
+    sin_wa = [t for t in tareas if t[2] == "☎"]
+    tareas = [t for t in tareas if t[2] != "☎"]
+    prio = {"!": 0, "↓": 1, "⚖": 2, "✓": 4}
+    tareas.sort(key=lambda t: prio.get(t[2], 3))
+    # Muchos del mismo tipo: una sola tarjeta con la lista
+    for ico, titulo in (("↓", "Pedir alimento"), ("⚖", "Pesada mensual")):
+        grupo = [t for t in tareas if t[2] == ico]
+        if len(grupo) > 3:
+            resto = [t for t in tareas if t[2] != ico]
+            det = "; ".join(f"{t[3].split(' · ')[0]} ({t[4].split('el ')[-1].rstrip('.')})" for t in grupo)
+            pos = min(i for i, t in enumerate(tareas) if t[2] == ico)
+            resto.insert(min(pos, len(resto)), (grupo[0][0], grupo[0][1], ico,
+                                                f"{titulo}: {len(grupo)} lotes", det))
+            tareas = resto
+    if sin_wa:
+        nombres = [t[3].split(" · ")[0] for t in sin_wa]
+        tareas.append(("var(--hm-chip)", "var(--hm-sub)", "☎",
+                       f"Falta el WhatsApp de {len(nombres)} cliente{'s' if len(nombres) != 1 else ''}",
+                       ", ".join(nombres) + ". Cargalo en Clientes para mandar controles y avisos."))
     n_anim = sum(d.get("animales") or 0 for d in datos)
     n_cli = len({d["lote"].get("cliente_id") for d in datos})
     resto = (f' · <b>{len(tareas)} cosa{"s" if len(tareas) != 1 else ""} para mirar</b>'
@@ -391,15 +413,22 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     col_a, col_b = st.columns([1.15, 1], gap="medium")
     with col_a:
         if tareas:
-            h = '<div class="hm"><div class="hm-lbl">PARA HOY</div>'
-            for bg, fg, ico, tit, sub in tareas:
-                h += (
-                    f'<div class="hm-card"><div class="hm-row">'
-                    f'<div class="hm-ico" style="background:{bg};color:{fg}">{_e(ico)}</div>'
-                    f'<div><div class="hm-h">{_e(tit)}</div>'
-                    f'<div class="hm-sub">{_e(sub)}</div></div></div></div>'
-                )
-            st.markdown(h + "</div>", unsafe_allow_html=True)
+            def _html_tareas(ts):
+                h = ""
+                for bg, fg, ico, tit, sub in ts:
+                    h += (
+                        f'<div class="hm-card"><div class="hm-row">'
+                        f'<div class="hm-ico" style="background:{bg};color:{fg}">{_e(ico)}</div>'
+                        f'<div><div class="hm-h">{_e(tit)}</div>'
+                        f'<div class="hm-sub">{_e(sub)}</div></div></div></div>'
+                    )
+                return h
+            st.markdown(f'<div class="hm"><div class="hm-lbl">PARA HOY · {len(tareas)}</div>'
+                        f'{_html_tareas(tareas[:6])}</div>', unsafe_allow_html=True)
+            if len(tareas) > 6:
+                with st.expander(f"Ver {len(tareas) - 6} más"):
+                    st.markdown(f'<div class="hm">{_html_tareas(tareas[6:])}</div>',
+                                unsafe_allow_html=True)
 
         c_l, c_b = st.columns([2, 1.3], vertical_alignment="center")
         c_l.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
@@ -410,10 +439,16 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             _g.dialog_encierre()
         if not datos:
             st.info("No hay lotes activos. Cargá un encierre con el botón de arriba.")
-        for d in datos:
-            _tarjeta_lote(d)
-            if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):
-                on_abrir_lote(d["id"])
+        datos_ord = sorted(datos, key=lambda x: ((x.get("stock_min") or {}).get("dias_restantes")
+                                                  if (x.get("stock_min") or {}).get("dias_restantes") is not None
+                                                  else 9999))
+        if len(datos_ord) <= 3:
+            for d in datos_ord:
+                _tarjeta_lote(d)
+                if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):
+                    on_abrir_lote(d["id"])
+        else:
+            _tabla_lotes(datos_ord, on_abrir_lote, kp)
 
     with col_b:
         try:
@@ -424,10 +459,13 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             h = ('<div class="hm"><div class="hm-lbl">PRÓXIMOS PEDIDOS DE ALIMENTO</div><div class="hm-card">'
                  '<table class="hm-tab"><tr><th>Cliente</th><th>Producto</th><th>Se termina</th>'
                  '<th>Próx. 30 días</th></tr>')
-            for p in pedidos:
+            for p in pedidos[:8]:
                 plata = f'<div class="hm-sub">${_num(p["plata30"], 0)}</div>' if p.get("plata30") else ""
                 h += (f'<tr><td>{_e(p["cliente"])}</td><td>{_e(p["producto"])}</td>'
                       f'<td>{_dm(p["fecha"])}</td><td>{_num(p["kg30"], 0)} kg{plata}</td></tr>')
+            if len(pedidos) > 8:
+                h += (f'<tr><td colspan="4" class="hm-sub">… y {len(pedidos) - 8} más '
+                      f'(la tabla sigue por fecha)</td></tr>')
             h += ('</table><div class="hm-sub" style="margin-top:6px">Lo que va a consumir cada lote en '
                   'los próximos 30 días con la ración vigente (estimado). Plata a último precio, sin IVA.'
                   '</div></div></div>')
@@ -443,9 +481,15 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 ag.append((d["fecha_peso"] + timedelta(days=15), f"Seguimiento de 15 días · {d['cliente']}"))
             if d.get("proxima_pesada"):
                 ag.append((d["proxima_pesada"], f"Pesada mensual · {d['cliente']}"))
-        ag = sorted([a for a in ag if a[0] >= hoy - timedelta(days=1)])[:8]
+        ag = sorted([a for a in ag if hoy - timedelta(days=1) <= a[0] <= hoy + timedelta(days=14)])
+        # Agrupar la misma tarea del mismo día: "Pesada mensual · A, B, C"
+        agr: Dict = {}
+        for f_, t_ in ag:
+            tarea, _, cli = t_.rpartition(" · ")
+            agr.setdefault((f_, tarea), []).append(cli)
+        ag = [(f_, f"{tarea} · {', '.join(clis)}") for (f_, tarea), clis in sorted(agr.items())][:10]
         if ag:
-            h = '<div class="hm"><div class="hm-lbl">AGENDA</div><div class="hm-card">'
+            h = '<div class="hm"><div class="hm-lbl">AGENDA · PRÓXIMAS 2 SEMANAS</div><div class="hm-card">'
             for f, t in ag:
                 h += f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div><div>{_e(t)}</div></div>'
             st.markdown(h + "</div></div>", unsafe_allow_html=True)
@@ -1065,15 +1109,15 @@ def _icono_dia(x: Dict) -> str:
 
 
 def _clima_semana(datos: List[Dict]) -> None:
-    """Pronóstico de 7 días por localidad con lote activo."""
+    """Pronóstico de 7 días: una línea por localidad con lote activo."""
     vistos = set()
-    bloques = ""
+    filas = []
+    cab = None
     for d in datos:
-        cid = d["lote"].get("cliente_id")
-        info = _clima_cliente(cid)
+        info = _clima_cliente(d["lote"].get("cliente_id"))
         if not info or info.get("estado") not in (None, "ok"):
             continue
-        loc = info.get("localidad") or d.get("localidad") or ""
+        loc = (info.get("localidad") or d.get("localidad") or "").split(",")[0]
         if loc in vistos:
             continue
         vistos.add(loc)
@@ -1081,17 +1125,55 @@ def _clima_semana(datos: List[Dict]) -> None:
                 if "HOY" in str(x.get("tramo")) or "Pronóstico" in str(x.get("tramo"))][:7]
         if not dias:
             continue
-        celdas = ""
-        for x in dias:
-            f = _fecha(x.get("fecha"))
-            nom = "Hoy" if "HOY" in str(x.get("tramo")) else (DIAS_SEM[f.weekday()] if f else "")
-            ll = float(x.get("precipitacion_mm") or 0)
-            celdas += (f'<div><div>{nom}</div><div class="ico">{_icono_dia(x)}</div>'
-                       f'<div class="mx">{_num(x.get("t_max"), 0)}°</div>'
-                       f'<div class="mn">{_num(x.get("t_min"), 0)}°</div>'
-                       f'<div class="mn">{_num(ll, 0) + " mm" if ll >= 1 else ""}</div></div>')
-        bloques += (f'<div class="hm-sub" style="margin:4px 0 6px"><b>{_e(loc)}</b> · '
-                    f'{_e(d["cliente"])}</div><div class="hm-clima">{celdas}</div>')
-    if bloques:
-        st.markdown(f'<div class="hm"><div class="hm-lbl">CLIMA DE LA SEMANA</div>'
-                    f'<div class="hm-card">{bloques}</div></div>', unsafe_allow_html=True)
+        if cab is None:
+            cab = "".join(
+                f'<th>{"Hoy" if "HOY" in str(x.get("tramo")) else (DIAS_SEM[_fecha(x.get("fecha")).weekday()] if _fecha(x.get("fecha")) else "")}</th>'
+                for x in dias)
+        celdas = "".join(
+            f'<td title="mín {_num(x.get("t_min"), 0)}°, {_num(x.get("precipitacion_mm"), 0)} mm">'
+            f'{_icono_dia(x)}<br><b>{_num(x.get("t_max"), 0)}°</b></td>' for x in dias)
+        filas.append(f'<tr><td><b>{_e(loc)}</b></td>{celdas}</tr>')
+    if filas:
+        tabla = (f'<table class="hm-tab hm-climat"><tr><th></th>{cab}</tr>'
+                 f'{"".join(filas[:6])}</table>')
+        extra = (f'<div class="hm-sub">… y {len(filas) - 6} localidades más</div>'
+                 if len(filas) > 6 else "")
+        st.markdown(f'<div class="hm"><div class="hm-lbl">CLIMA DE LA SEMANA · máxima</div>'
+                    f'<div class="hm-card">{tabla}{extra}</div></div>', unsafe_allow_html=True)
+
+
+def _tabla_lotes(datos: List[Dict], on_abrir_lote, kp: str) -> None:
+    """Con muchos lotes: una fila por lote, ordenada por urgencia de
+    alimento. Tocar la fila abre la ficha."""
+    import pandas as pd
+    filas = []
+    for d in datos:
+        sm = d.get("stock_min") or {}
+        ctrl = (d.get("control") or {}).get("semaforo_general") or ""
+        filas.append({
+            "Cliente": d["cliente"],
+            "Lote": d["lote"].get("identificador") or "",
+            "Animales": d.get("animales"),
+            "Día": d.get("dia"),
+            "Peso kg": round(d["peso"]) if d.get("peso") else None,
+            "Ganancia": round(d["adpv"], 2) if d.get("adpv") is not None else None,
+            "Alimento (días)": int(round(sm["dias_restantes"])) if sm.get("dias_restantes") is not None else None,
+            "Control": {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴"}.get(ctrl.lower(), "⚪"),
+        })
+    df = pd.DataFrame(filas)
+    st.caption("Tocá una fila para abrir la ficha. Arriba, los que se quedan antes sin alimento.")
+    ev = st.dataframe(
+        df, hide_index=True, width="stretch", on_select="rerun",
+        selection_mode="single-row", key=f"{kp}_tabla_lotes",
+        column_config={
+            "Alimento (días)": st.column_config.ProgressColumn(
+                "Alimento (días)", min_value=0, max_value=30, format="%d"),
+            "Ganancia": st.column_config.NumberColumn("Ganancia kg/d", format="%.2f"),
+        },
+    )
+    try:
+        sel = ev.selection.rows
+    except Exception:
+        sel = []
+    if sel:
+        on_abrir_lote(datos[sel[0]]["id"])

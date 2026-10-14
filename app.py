@@ -1925,6 +1925,7 @@ with tab_hoy:
 
     def _hm_volver():
         st.session_state.pop("hm_lote", None)
+        st.session_state.pop("hm_tabla_lotes", None)
         st.rerun()
 
     try:

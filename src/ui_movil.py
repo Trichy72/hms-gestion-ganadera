@@ -300,11 +300,11 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             ))
         ctrl = d.get("control")
         f_ctrl = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
-        if not ctrl or (f_ctrl and (hoy - f_ctrl).days > 7):
+        if ctrl and f_ctrl and (hoy - f_ctrl).days > 7:
             tareas.append((
                 "var(--hm-chip)", "var(--hm-sub)", "✓",
                 f"{d['cliente']} · control semanal",
-                "Sin control esta semana." if ctrl else "Todavía no tiene ningún control cargado.",
+                f"El último control es del {_dm(f_ctrl)}.",
             ))
 
     # Clima: solo clientes con lote activo (una consulta por hora).
@@ -321,13 +321,14 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         log.info("ui_movil: clima: %s", e)
 
     n_anim = sum(d.get("animales") or 0 for d in datos)
+    n_cli = len({d["lote"].get("cliente_id") for d in datos})
+    resto = (f' · <b>{len(tareas)} cosa{"s" if len(tareas) != 1 else ""} para mirar</b>'
+             if tareas else " · nada urgente hoy")
     st.markdown(
         f'<div class="hm"><div class="hm-top">'
-        f'<div class="s">{_dia_corto(hoy)} {MESES[hoy.month - 1]}</div>'
         f'<div class="t">{_saludo()}, Mauri</div>'
-        f'<div class="s">Tenés <b>{len(datos)} lote{"s" if len(datos) != 1 else ""} '
-        f'activo{"s" if len(datos) != 1 else ""}</b> con <b>{n_anim} animales</b>'
-        f' y <b>{len(tareas)} cosa{"s" if len(tareas) != 1 else ""} para mirar</b>.</div>'
+        f'<div class="s"><b>{n_anim} animales</b> en {len(datos)} lote{"s" if len(datos) != 1 else ""} '
+        f'de {n_cli} cliente{"s" if n_cli != 1 else ""}{resto}.</div>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
@@ -337,44 +338,141 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         from . import ui_gestion as _g
         _g.dialog_encierre()
 
-    if tareas:
-        h = '<div class="hm"><div class="hm-lbl">PARA HOY</div>'
-        for bg, fg, ico, tit, sub in tareas:
-            h += (
-                f'<div class="hm-card"><div class="hm-row">'
-                f'<div class="hm-ico" style="background:{bg};color:{fg}">{_e(ico)}</div>'
-                f'<div><div class="hm-h">{_e(tit)}</div>'
-                f'<div class="hm-sub">{_e(sub)}</div></div></div></div>'
-            )
-        st.markdown(h + "</div>", unsafe_allow_html=True)
+    pedidos = _pedidos_proximos(datos)
+    try:
+        _resumen_inicio(datos, pedidos, hoy)
+    except Exception as e:
+        log.info("ui_movil: resumen: %s", e)
 
-    st.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
+    col_a, col_b = st.columns([1.15, 1], gap="medium")
+    with col_a:
+        if tareas:
+            h = '<div class="hm"><div class="hm-lbl">PARA HOY</div>'
+            for bg, fg, ico, tit, sub in tareas:
+                h += (
+                    f'<div class="hm-card"><div class="hm-row">'
+                    f'<div class="hm-ico" style="background:{bg};color:{fg}">{_e(ico)}</div>'
+                    f'<div><div class="hm-h">{_e(tit)}</div>'
+                    f'<div class="hm-sub">{_e(sub)}</div></div></div></div>'
+                )
+            st.markdown(h + "</div>", unsafe_allow_html=True)
+
+        st.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
+                    unsafe_allow_html=True)
+        if not datos:
+            st.info("No hay lotes activos. Cargá un encierre con el botón de arriba.")
+        for d in datos:
+            _tarjeta_lote(d)
+            if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):
+                on_abrir_lote(d["id"])
+
+    with col_b:
+        if pedidos:
+            h = ('<div class="hm"><div class="hm-lbl">PRÓXIMOS PEDIDOS DE ALIMENTO</div><div class="hm-card">'
+                 '<table class="hm-tab"><tr><th>Cliente</th><th>Producto</th><th>Se termina</th>'
+                 '<th>Próx. 30 días</th></tr>')
+            for p in pedidos:
+                plata = f'<div class="hm-sub">${_num(p["plata30"], 0)}</div>' if p.get("plata30") else ""
+                h += (f'<tr><td>{_e(p["cliente"])}</td><td>{_e(p["producto"])}</td>'
+                      f'<td>{_dm(p["fecha"])}</td><td>{_num(p["kg30"], 0)} kg{plata}</td></tr>')
+            h += ('</table><div class="hm-sub" style="margin-top:6px">Lo que va a consumir cada lote en '
+                  'los próximos 30 días con la ración vigente (estimado). Plata a último precio, sin IVA.'
+                  '</div></div></div>')
+            st.markdown(h, unsafe_allow_html=True)
+
+        ag = []
+        for d in datos:
+            sm = d.get("stock_min")
+            fa = _fecha((sm or {}).get("fecha_agotamiento"))
+            if fa:
+                ag.append((fa - timedelta(days=2), f"Pedido de {sm['producto']} · {d['cliente']}"))
+            if d.get("fecha_peso"):
+                ag.append((d["fecha_peso"] + timedelta(days=15), f"Seguimiento de 15 días · {d['cliente']}"))
+            if d.get("proxima_pesada"):
+                ag.append((d["proxima_pesada"], f"Pesada mensual · {d['cliente']}"))
+        ag = sorted([a for a in ag if a[0] >= hoy - timedelta(days=1)])[:8]
+        if ag:
+            h = '<div class="hm"><div class="hm-lbl">AGENDA</div><div class="hm-card">'
+            for f, t in ag:
+                h += f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div><div>{_e(t)}</div></div>'
+            st.markdown(h + "</div></div>", unsafe_allow_html=True)
+
+
+def _precio_kg(e: Dict) -> Optional[float]:
+    """Precio por kg sin IVA de una entrega. Algunas viejas guardaron el
+    precio de la bolsa como si fuera por kg: se corrige con kg_por_bolsa."""
+    try:
+        pk = float(e.get("precio_kg") or 0)
+        kb = float(e.get("kg_por_bolsa") or 0)
+    except (TypeError, ValueError):
+        return None
+    if pk <= 0:
+        return None
+    if pk > 5000 and kb > 0:
+        pk = pk / kb
+    return pk
+
+
+def _pedidos_proximos(datos: List[Dict]) -> List[Dict]:
+    out = []
+    for d in datos:
+        for s in d.get("stock") or []:
+            dia = float(s.get("consumo_diario_kg") or 0)
+            if dia <= 0:
+                continue
+            ents = sorted(s.get("entregas") or [], key=lambda e: str(e.get("fecha_entrega")))
+            pk = _precio_kg(ents[-1]) if ents else None
+            kg30 = dia * 30
+            out.append({
+                "cliente": d["cliente"], "producto": s["producto"],
+                "fecha": _fecha(s.get("fecha_agotamiento")),
+                "kg_hoy": s.get("kg_restantes_hoy"),
+                "kg30": kg30, "plata30": kg30 * pk if pk else None,
+            })
+    out.sort(key=lambda p: p["fecha"] or date.max)
+    return out
+
+
+def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> None:
+    tiles = []
+    num = den = 0.0
+    kg_carne = 0.0
+    for d in datos:
+        if d.get("adpv") is not None and d.get("animales"):
+            num += d["adpv"] * d["animales"]
+            den += d["animales"]
+        pes = d.get("pesadas") or []
+        if len(pes) >= 2 and d.get("animales"):
+            kg_carne += (float(pes[-1]["peso_promedio_kg"])
+                         - float(pes[0]["peso_promedio_kg"])) * d["animales"]
+    if den:
+        tiles.append(_tile("GANANCIA DIARIA", _num(num / den, 2),
+                           "kg/día promedio, medida en balanza"))
+    if kg_carne:
+        tiles.append(_tile("KG DE CARNE GANADOS", _num(kg_carne, 0),
+                           "entre pesadas, todos los lotes"))
+    if pedidos:
+        kg_campo = sum(float(p.get("kg_hoy") or 0) for p in pedidos)
+        prim = pedidos[0]
+        tiles.append(_tile("ALIMENTO EN EL CAMPO",
+                           f'{_num(kg_campo, 0)}<span style="font-size:14px"> kg</span>',
+                           f"primero se termina {prim['cliente']}, el {_dm(prim['fecha'])}"))
+        kg30 = sum(p["kg30"] for p in pedidos)
+        plata = sum(p["plata30"] or 0 for p in pedidos)
+        tiles.append(_tile("VENTA PRÓXIMOS 30 DÍAS",
+                           f'{_num(kg30, 0)}<span style="font-size:14px"> kg</span>',
+                           (f"≈ ${_num(plata, 0)} sin IVA, " if plata else "") + "estimado por consumo"))
+    ini_mes = hoy.replace(day=1).isoformat()
+    filas = _sql("SELECT kg_total, precio_total FROM entregas_producto WHERE fecha_entrega >= ?",
+                 (ini_mes,))
+    kg_m = sum(float(f.get("kg_total") or 0) for f in filas)
+    pl_m = sum(float(f.get("precio_total") or 0) for f in filas)
+    tiles.append(_tile(f"ENTREGADO EN {MESES[hoy.month - 1].upper()}",
+                       f'{_num(kg_m, 0)}<span style="font-size:14px"> kg</span>',
+                       (f"${_num(pl_m, 0)} sin IVA" if pl_m else
+                        ("todavía no hubo entregas" if not filas else f"{len(filas)} entregas"))))
+    st.markdown(f'<div class="hm"><div class="hm-kgrid">{"".join(tiles)}</div></div>',
                 unsafe_allow_html=True)
-    if not datos:
-        st.info("No hay lotes activos. Cargá un encierre con el botón de arriba.")
-    for d in datos:
-        _tarjeta_lote(d)
-        if st.button("Ver ficha", key=f"{kp}_ver_{d['id']}", width="stretch"):
-            on_abrir_lote(d["id"])
-
-    # Agenda
-    ag = []
-    for d in datos:
-        sm = d.get("stock_min")
-        fa = _fecha((sm or {}).get("fecha_agotamiento"))
-        if fa:
-            ag.append((fa - timedelta(days=2), f"Pedido de {sm['producto']} · {d['cliente']}"))
-        if d.get("fecha_peso"):
-            ag.append((d["fecha_peso"] + timedelta(days=15), f"Seguimiento de 15 días · {d['cliente']}"))
-        if d.get("proxima_pesada"):
-            ag.append((d["proxima_pesada"], f"Pesada mensual · {d['cliente']}"))
-    ag = sorted([a for a in ag if a[0] >= hoy - timedelta(days=1)])[:6]
-    if ag:
-        h = '<div class="hm"><div class="hm-lbl">PRÓXIMOS DÍAS</div><div class="hm-card">'
-        for f, t in ag:
-            h += f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div><div>{_e(t)}</div></div>'
-        st.markdown(h + "</div></div>", unsafe_allow_html=True)
-
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _alertas_clima(cliente_ids: tuple) -> list:
@@ -566,9 +664,6 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
             ) if adpv_proy else ""
             st.markdown(
                 '<div class="hm"><div class="hm-lbl">PESO DEL LOTE · kg promedio</div><div class="hm-card">'
-                f'<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">'
-                f'<div class="hm-big" style="font-size:36px">{_num(d["peso"]) if d["peso"] else "—"}</div>'
-                f'<div class="hm-sub">{sub}</div></div>'
                 f'{_grafico_peso(d["pesadas"], adpv_proy, hasta)}'
                 f'<div class="hm-sub">Línea llena: balanza. Línea cortada: {leyenda_proy}.</div>'
                 + "".join(
@@ -792,8 +887,6 @@ def _kpis(lote: Dict, d: Dict) -> None:
     from . import stock_producto as sp
     tiles = []
     hoy = date.today()
-    tiles.append(_tile("DÍA DE ENCIERRE", str(d["dia"] or "—"),
-                       f"desde {_dm(d['ingreso'])}"))
 
     pes = d.get("pesadas") or []
     try:
@@ -840,11 +933,6 @@ def _kpis(lote: Dict, d: Dict) -> None:
             sub += f" · ${_num(plata / d['animales'], 0)}/cab sin IVA"
         tiles.append(_tile("ALIMENTO HMS", f'{_num(kg, 0)}<span style="font-size:14px"> kg</span>', sub))
 
-    pp = d.get("proxima_pesada")
-    if pp:
-        dd = (pp - hoy).days
-        tiles.append(_tile("PRÓXIMA PESADA", _dm(pp),
-                           f"en {dd} días" if dd >= 0 else f"atrasada {-dd} días"))
     st.markdown(f'<div class="hm"><div class="hm-kgrid">{"".join(tiles)}</div></div>',
                 unsafe_allow_html=True)
 

@@ -449,7 +449,7 @@ def render_ficha(lote_id: int, on_volver) -> None:
     en_adapt = bool(fin_adapt and hoy < fin_adapt)
     pasos = [
         ("Encierre", _dm(d["ingreso"]), True, False),
-        ("Adaptación", f'{plan["dias_adaptacion"]} días' if plan else "—", not en_adapt and bool(plan), en_adapt),
+        ("Adaptación", f'desde {_dm(_fecha(plan["fecha_inicio"]))}' if plan else "—", not en_adapt and bool(plan), en_adapt),
         ("Terminación", f'hoy, día {d["dia"]}' if d["dia"] else "—", False, not en_adapt),
         ("Pesada", _dm(d.get("proxima_pesada")), False, False),
         ("Salida", _dm(salida) if salida else "a definir", False, False),

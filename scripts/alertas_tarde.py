@@ -183,6 +183,13 @@ def main() -> int:
     es_domingo = datetime.now().weekday() == 6
 
     clientes = db.listar_clientes()
+    # Solo clientes activos con al menos un lote activo: sin lote no hay
+    # hacienda que cuidar, así que no se calcula ni se manda clima.
+    clientes = [
+        c for c in clientes
+        if (c.get("estado") or "activo") != "baja"
+        and db.listar_lotes(cliente_id=c["id"], estado="activo")
+    ]
     if args.solo_cliente:
         clientes = [c for c in clientes
                     if args.solo_cliente.lower() in c["nombre"].lower()]

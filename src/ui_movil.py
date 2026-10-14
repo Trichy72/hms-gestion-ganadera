@@ -462,12 +462,15 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         for d in datos:
             sm = d.get("stock_min")
             fa = _fecha((sm or {}).get("fecha_agotamiento"))
-            if fa:
+            # Lo que ya está en "Para hoy" no se repite en la agenda
+            ya_hoy = sm and sm.get("dias_restantes") is not None and sm["dias_restantes"] <= 10
+            if fa and not ya_hoy:
                 ag.append((fa - timedelta(days=2), f"Pedido de {sm['producto']} · {d['cliente']}"))
             if d.get("fecha_peso"):
                 ag.append((d["fecha_peso"] + timedelta(days=15), f"Seguimiento de 15 días · {d['cliente']}"))
-            if d.get("proxima_pesada"):
-                ag.append((d["proxima_pesada"], f"Pesada mensual · {d['cliente']}"))
+            pp = d.get("proxima_pesada")
+            if pp and (pp - hoy).days > 3:
+                ag.append((pp, f"Pesada mensual · {d['cliente']}"))
         ag = sorted([a for a in ag if hoy <= a[0] <= hoy + timedelta(days=14)])
         # Agrupar la misma tarea del mismo día: "Pesada mensual · A, B, C"
         agr: Dict = {}
@@ -477,7 +480,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         ag = [(f_, tarea, clis) for (f_, tarea), clis in sorted(agr.items())]
         mas_ag = max(0, len(ag) - 7)
         ag = ag[:7]
-        h = '<div class="hm"><div class="hm-lbl">AGENDA · PRÓXIMAS 2 SEMANAS</div><div class="hm-card">'
+        h = '<div class="hm"><div class="hm-lbl">AGENDA · LO QUE VIENE (2 SEMANAS)</div><div class="hm-card">'
         if ag:
             for f, tarea, clis in ag:
                 h += (f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div>'
@@ -546,37 +549,10 @@ def _pedidos_proximos(datos: List[Dict]) -> List[Dict]:
 
 
 def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> str:
-    """Cuatro preguntas del negocio, cada una con su respuesta y para qué
-    sirve. Siempre nombra a los clientes cuando el dato es de uno."""
+    """Números del negocio que no están en otro lado de Inicio: lo que se
+    va a vender y lo entregado en el mes. Los pedidos van en "Para hoy"."""
     kg_ = '<span style="font-size:14px"> kg</span>'
     tiles = []
-
-    # 1. ¿A quién hay que mandarle alimento?
-    prox = []
-    for d in datos:
-        sm = d.get("stock_min") or {}
-        fa = _fecha(sm.get("fecha_agotamiento"))
-        if fa:
-            prox.append((fa - timedelta(days=2), d["cliente"], sm.get("producto") or "", fa))
-    prox.sort()
-    pronto = [p for p in prox if p[3] <= hoy + timedelta(days=10)]
-    if len(pronto) > 1:
-        # Varios clientes: cuántos pedidos vienen y a quién, en orden
-        lista = ", ".join(f"{p[1]} ({'hoy' if p[0] <= hoy else f'{p[0].day}/{p[0].month}'})"
-                          for p in pronto[:5])
-        tiles.append(_tile("PEDIDOS DE ALIMENTO · PRÓX. 10 DÍAS",
-                           f"{len(pronto)} clientes",
-                           f"Pedir en este orden: {_e(lista)}"
-                           + (f" y {len(pronto) - 5} más." if len(pronto) > 5 else ".")))
-    elif prox:
-        f_ped, cli, prod, fa = prox[0]
-        cuando = "hoy" if f_ped <= hoy else f"el {_dia_corto(f_ped).lower()}/{f_ped.month}"
-        tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", _e(cli),
-                           f"{_e(prod)}: se le termina el {_dm(fa)}. "
-                           f"Pedilo {cuando} para que no le falte."))
-    else:
-        tiles.append(_tile("PRÓXIMO PEDIDO DE ALIMENTO", "—",
-                           "Cargá las entregas para saber cuándo se le termina a cada uno."))
 
     # 2. ¿Cuánto voy a vender el mes que viene?
     if pedidos:
@@ -603,21 +579,6 @@ def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> str:
                        + f"En {mes_ant} fueron {_num(kg_a, 0)} kg. "
                        + ("Todavía no se cargó ninguna entrega este mes." if not kg_m else "")))
 
-    # 4. ¿Cómo vienen engordando?
-    medidos = sorted([(d["adpv"], d["cliente"]) for d in datos if d.get("adpv") is not None],
-                     reverse=True)
-    if medidos:
-        if len(medidos) == 1:
-            v, c = medidos[0]
-            sub = f"Lo que ganó {c} entre las dos últimas pesadas."
-            val = _num(v, 2)
-        else:
-            num = sum(d["adpv"] * (d.get("animales") or 0) for d in datos if d.get("adpv") is not None)
-            den = sum((d.get("animales") or 0) for d in datos if d.get("adpv") is not None)
-            val = _num(num / den, 2) if den else "—"
-            sub = (f"Promedio de {len(medidos)} lotes pesados. Mejor: {medidos[0][1]} "
-                   f"({_num(medidos[0][0], 2)}). Más bajo: {medidos[-1][1]} ({_num(medidos[-1][0], 2)}).")
-        tiles.append(_tile("ENGORDE · KG POR DÍA", val, sub))
     return "".join(tiles)
 
 @st.cache_data(ttl=3600, show_spinner=False)

@@ -461,7 +461,8 @@ def _ficha_cliente(cliente_id: int, kp: str, nav: Dict) -> None:
     if not c:
         nav.pop("cliente", None)
         st.rerun()
-    if st.button("← Clientes", key=f"{kp}_volver_cli"):
+    um._subir_arriba(f"{kp}-cli-{cliente_id}")
+    if st.button("← Clientes", key=f"{kp}_volver_cli", type="primary"):
         nav.pop("cliente", None)
         st.rerun()
     baja = (c.get("estado") or "activo") == "baja"

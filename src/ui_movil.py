@@ -79,6 +79,22 @@ def _saludo() -> str:
     return "Buenas noches"
 
 
+def _subir_arriba(clave: str) -> None:
+    """Lleva la pantalla arriba de todo al abrir una ficha (si no, queda
+    a la altura de la tarjeta que se tocó y uno no sabe dónde está)."""
+    try:
+        import streamlit.components.v1 as components
+        components.html(
+            "<script>/*" + clave + "*/(function(){var d=window.parent.document;"
+            "['[data-testid=\"stMain\"]','[data-testid=\"stAppViewContainer\"]','section.main']"
+            ".forEach(function(q){var e=d.querySelector(q);if(e){e.scrollTo(0,0);}});"
+            "window.parent.scrollTo(0,0);})();</script>",
+            height=0,
+        )
+    except Exception:
+        pass
+
+
 def _dia_corto(d: date) -> str:
     return f"{DIAS_SEM[d.weekday()]} {d.day}"
 
@@ -603,8 +619,17 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
         return
     d = datos_lote(lote, hoy)
 
-    if st.button(texto_volver, key=f"{kp}_volver"):
+    _subir_arriba(f"{kp}-{lote_id}")
+    c_v, c_t = st.columns([1, 4], vertical_alignment="center")
+    if c_v.button(texto_volver, key=f"{kp}_volver", type="primary", width="stretch"):
         on_volver()
+    destino = texto_volver.replace("←", "").strip()
+    c_t.markdown(
+        f'<div class="hm" style="font-size:14px;color:var(--hm-sub)">{_e(destino)} › '
+        f'<b style="color:var(--hm-txt)">{_e(lote.get("cliente_nombre") or "")}</b> · '
+        f'{_e(lote.get("identificador") or "")}</div>',
+        unsafe_allow_html=True,
+    )
 
     # Cabecera con línea de tiempo
     plan = _sql("SELECT * FROM planes_adaptacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1", (lote_id,))

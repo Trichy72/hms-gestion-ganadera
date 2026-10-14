@@ -525,3 +525,87 @@ def _ficha_cliente(cliente_id: int, kp: str, nav: Dict) -> None:
         if st.button("Reactivar cliente", key=f"{kp}_react_{cliente_id}"):
             db.actualizar_cliente(cliente_id, estado="activo", fecha_baja=None, motivo_baja=None)
             _refrescar()
+
+
+# =====================================================================
+# Control semanal: carga y historial
+# =====================================================================
+_LETRAS_COLOR = {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴", "gris": "⚪"}
+
+
+@st.dialog("Control semanal", width="large")
+def dialog_control(lote_id: int):
+    from . import control_semanal as cs
+    lote = db.obtener_lote(lote_id) or {}
+    tipo = lote.get("tipo_comedero_concentrado") or "lineal"
+    st.caption(f"Comedero: {'silo comedero (autoconsumo)' if tipo.startswith('silo') else 'lineal'}. "
+               "Cargá lo que contestó el productor; el semáforo se calcula solo.")
+    with st.form("f_control"):
+        f = st.date_input("Fecha de las respuestas", value=date.today(), format="DD/MM/YYYY")
+        resp: Dict = {}
+        for clave, texto, ops, multiple in cs.preguntas(tipo):
+            etiquetas = [f"{k}) {v}" for k, v in ops.items()]
+            if multiple:
+                sel = st.multiselect(f"{clave}. {texto}", etiquetas, key=f"cq_{clave}")
+                resp[clave] = [x[0] for x in sel]
+            else:
+                opciones = ["— sin respuesta —"] + etiquetas
+                sel = st.selectbox(f"{clave}. {texto}", opciones, key=f"cq_{clave}")
+                resp[clave] = None if sel.startswith("—") else sel[0]
+        comen_mas = st.checkbox("En la 8: cambió la cantidad porque comen más", key="cq_8m")
+        detalle = st.text_area("Lo que contó el productor (causas, cantidades, repreguntas)", height=90)
+        st.markdown("**Fotos**")
+        fotos = []
+        cols = st.columns(2)
+        for i, (tema, et) in enumerate(cs.TEMAS_FOTO.items()):
+            up = cols[i % 2].file_uploader(et, type=["jpg", "jpeg", "png", "webp", "heic"],
+                                           accept_multiple_files=True, key=f"cf_{tema}")
+            for u in up or []:
+                fotos.append((tema, u.getvalue()))
+        ok = st.form_submit_button("Guardar control", type="primary", width="stretch")
+    if ok:
+        resp = {k: v for k, v in resp.items() if v}
+        if comen_mas:
+            resp["8_comen_mas"] = True
+        if not resp:
+            st.error("No cargaste ninguna respuesta.")
+            return
+        cs.guardar_control(lote_id, _iso(f), resp, tipo, comentarios=detalle, fotos=fotos)
+        sem = cs.semaforo(resp, tipo)
+        st.success(f"Guardado. Resultado: {_LETRAS_COLOR[sem['general']]} {sem['general']}.")
+        _refrescar()
+
+
+def historial_controles(lote_id: int, kp: str) -> None:
+    from . import control_semanal as cs
+    ctrls = cs.listar_controles(lote_id)
+    if not ctrls:
+        return
+    lote = db.obtener_lote(lote_id) or {}
+    pregs = {k: (t, o) for k, t, o, _ in cs.preguntas(lote.get("tipo_comedero_concentrado") or "")}
+    for c in ctrls[:12]:
+        fch = um._fecha(str(c.get("fecha_respuesta") or c.get("fecha_envio") or ""))
+        gen = (c.get("semaforo_general") or "gris").lower()
+        areas = " ".join(f"{_LETRAS_COLOR.get((c.get('semaforo_' + a) or 'gris').lower(), '⚪')} {n}"
+                         for a, n in cs.AREAS)
+        with st.expander(f"{_LETRAS_COLOR.get(gen, '⚪')} {um._dm(fch)} · {areas}"):
+            resp = c.get("respuestas") or {}
+            filas = []
+            for k, (t, ops) in pregs.items():
+                v = resp.get(k)
+                if not v:
+                    continue
+                vs = v if isinstance(v, list) else [v]
+                filas.append(f"**{k}.** {t} → " + ", ".join(f"{x}) {ops.get(x, '')}" for x in vs))
+            if filas:
+                st.markdown("\n\n".join(filas))
+            if c.get("comentarios"):
+                st.info(c["comentarios"])
+            fotos = cs.fotos_control(c["id"])
+            if fotos:
+                cols = st.columns(4)
+                for i, ft in enumerate(fotos):
+                    cols[i % 4].image(ft["datos"], caption=cs.TEMAS_FOTO.get(ft.get("tema"), ft.get("tema")),
+                                      width="stretch")
+            else:
+                st.caption("Sin fotos en este control.")

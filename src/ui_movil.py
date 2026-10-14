@@ -82,15 +82,18 @@ def _saludo() -> str:
 def _subir_arriba(clave: str) -> None:
     """Lleva la pantalla arriba de todo al abrir una ficha (si no, queda
     a la altura de la tarjeta que se tocó y uno no sabe dónde está)."""
+    js = ("(function(){var d=(window.parent&&window.parent.document)||document;"
+          "['[data-testid=\"stMain\"]','[data-testid=\"stAppViewContainer\"]','section.main']"
+          ".forEach(function(q){var e=d.querySelector(q);if(e){e.scrollTo(0,0);}});"
+          "try{window.scrollTo(0,0);}catch(e){}})();")
     try:
-        import streamlit.components.v1 as components
-        components.html(
-            "<script>/*" + clave + "*/(function(){var d=window.parent.document;"
-            "['[data-testid=\"stMain\"]','[data-testid=\"stAppViewContainer\"]','section.main']"
-            ".forEach(function(q){var e=d.querySelector(q);if(e){e.scrollTo(0,0);}});"
-            "window.parent.scrollTo(0,0);})();</script>",
-            height=0,
-        )
+        st.html(f"<script>/*{clave}*/{js}</script>", unsafe_allow_javascript=True)
+    except TypeError:
+        try:
+            import streamlit.components.v1 as components
+            components.html(f"<script>/*{clave}*/{js}</script>", height=0)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -316,6 +319,28 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             ))
         ctrl = d.get("control")
         f_ctrl = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
+        gen = ((ctrl or {}).get("semaforo_general") or "").lower()
+        if gen in ("rojo", "amarillo") and f_ctrl and (hoy - f_ctrl).days <= 7:
+            malas = [n for a, n in (("sanidad", "sanidad"), ("consumo", "consumo"),
+                                    ("ambiente", "ambiente"), ("alimento", "alimento"))
+                     if ((ctrl or {}).get("semaforo_" + a) or "").lower() in ("rojo", "amarillo")]
+            fg_c, bg_c = ESTADO_COLOR[gen]
+            tareas.insert(0, (
+                bg_c, fg_c, "!",
+                f"{d['cliente']} · control en {gen}",
+                f"Del {_dm(f_ctrl)}: revisar {', '.join(malas)}."
+                + (f" {ctrl.get('comentarios')}" if ctrl.get("comentarios") else ""),
+            ))
+        try:
+            _cli = db.obtener_cliente(d["lote"].get("cliente_id")) or {}
+            if not (_cli.get("whatsapp") or "").strip():
+                tareas.append((
+                    "var(--hm-chip)", "var(--hm-sub)", "☎",
+                    f"{d['cliente']} · falta el WhatsApp",
+                    "Cargalo en Clientes para poder mandarle el control y los avisos.",
+                ))
+        except Exception:
+            pass
         if ctrl and f_ctrl and (hoy - f_ctrl).days > 7:
             tareas.append((
                 "var(--hm-chip)", "var(--hm-sub)", "✓",
@@ -755,12 +780,20 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
             cab = f"respondido el {_dm(f_c)}" if ctrl else "pendiente"
             txt = (_e(ctrl.get("comentarios")) if ctrl and ctrl.get("comentarios")
                    else "Cuando lleguen las respuestas del productor se pintan en verde, amarillo o rojo.")
+            if not ctrl:
+                txt = ("Todavía no hay controles. Cargá lo que te mande el productor por WhatsApp "
+                       "(respuestas y fotos) con el botón de abajo; cuando se conecte WhatsApp "
+                       "se va a llenar solo.")
             st.markdown(
-                f'<div class="hm"><div class="hm-lbl">ÚLTIMO CONTROL SEMANAL · {cab}</div>'
+                f'<div class="hm"><div class="hm-lbl">CONTROL SEMANAL · último {cab}</div>'
                 f'<div class="hm-card"><div class="hm-sem">{sem}</div>'
                 f'<div class="hm-nota">{txt}</div></div></div>',
                 unsafe_allow_html=True,
             )
+            from . import ui_gestion as _g
+            if st.button("📋 Cargar control semanal", key=f"{kp}_ctrl_{lote_id}", width="stretch"):
+                _g.dialog_control(lote_id)
+            _g.historial_controles(lote_id, kp)
         except Exception as e:
             st.caption(f"No se pudo mostrar el control: {e}")
 

@@ -1726,8 +1726,7 @@ cfg = load_config()
 with st.sidebar:
     st.header("⚙️ Configuración")
     st.caption(
-        "Lo principal — marca y API del Asesor IA. El procesamiento de "
-        "drone (imagen/video) se hace en la app local de la Mac."
+        "Marca HMS."
     )
 
     st.divider()
@@ -8744,8 +8743,8 @@ with tab_clientes:
     st.markdown(
         "### 🏢 Gestión de Clientes y Lotes\n"
         "Registrá tus clientes (establecimientos) y los lotes activos para "
-        "seguimiento longitudinal. Cada análisis por drone se guarda asociado a "
-        "un lote, lo que te permite ver evolución a lo largo del tiempo."
+        "seguimiento longitudinal. Cada pesada y cada dieta se guardan "
+        "asociadas a un lote, lo que te permite ver la evolución."
     )
 
     sub1, sub2 = st.tabs(["👥 Clientes", "🐄 Lotes"])
@@ -12738,12 +12737,11 @@ with tab_clientes:
 
                     # ---- Carga manual de pesadas (sin drone) ----
                     with st.expander(
-                        "✏️ Cargar pesada manual (sin drone — balanza, manga, estimación)",
+                        "✏️ Cargar pesada manual (balanza, manga, estimación)",
                         expanded=False,
                     ):
                         st.caption(
-                            "Para clientes que no usan drone. Carga directa "
-                            "del peso medido en balanza, manga, o por "
+                            "Carga directa del peso medido en balanza, manga, o por "
                             "estimación visual del asesor."
                         )
                         with st.form(f"pesada_manual_{lote_sel}"):
@@ -14945,11 +14943,10 @@ with tab_config:
         "WhatsApp. Se carga una vez y queda."
     )
 
-    (sub_ings, sub_cats, sub_marca, sub_drone, sub_email, sub_whatsapp) = st.tabs([
+    (sub_ings, sub_cats, sub_marca, sub_email, sub_whatsapp) = st.tabs([
         "🌾 Ingredientes",
         "🐄 Categorías de animales",
         "🎨 Marca HMS",
-        "📐 Calibración drone",
         "📧 Alertas por email",
         "💬 WhatsApp",
     ])
@@ -15032,8 +15029,7 @@ with tab_config:
     with sub_cats:
         st.markdown(
             "Administrá la lista de categorías que aparecen en los "
-            "dropdowns de **Nuevo Lote**, **Drone** y **Dieta del "
-            "Asesor IA**. Podés agregar, renombrar, ajustar el ADPV "
+            "listas de **Nuevo Lote** y de las **dietas**. Podés agregar, renombrar, ajustar el ADPV "
             "default o desactivar las que no usás."
         )
         st.caption(
@@ -15307,8 +15303,8 @@ with tab_config:
                     st.success(f"✅ Guardado: {save_path.name}")
                     st.rerun()
 
-    # ---- Sub-tab: Calibración drone ----
-    with sub_drone:
+    # ---- Calibración drone: otro proyecto, fuera de esta app ----
+    if _PANTALLAS_VIEJAS:
         st.markdown("### 📐 Parámetros del módulo drone")
         st.caption("Estos valores se aplican al procesamiento de imágenes y videos.")
 
@@ -15786,17 +15782,10 @@ with tab_config:
                 st.error(f"❌ {msg}")
 
         st.divider()
-        st.markdown("##### Programar el envío diario")
+        st.markdown("##### Envío diario")
         st.caption(
-            "Una vez configurado el SMTP, instalá la tarea automática para "
-            "que corra todos los días a las 08:00 sin intervención tuya."
-        )
-
-        st.code(
-            "# Desde la terminal, ejecutá una sola vez:\n"
-            "cd \"/Users/hms/Documents/Claude/Projects/determinacion de pesos y conteo bovinos utilizando drone\"\n"
-            "bash scripts/instalar_cron.sh\n",
-            language="bash",
+            "Los avisos salen solos todos los días desde la nube; no hace "
+            "falta instalar nada en la computadora."
         )
 
         with st.expander("¿Querés probarlo ahora sin esperar a las 08:00?"):
@@ -16082,63 +16071,29 @@ with tab_help:
 
     st.markdown(
         """
-### Cómo está armado el sistema
+### Cómo está armada la app
 
-El sistema son **dos aplicaciones que comparten la misma base de datos**:
+Es una sola app online que se usa desde cualquier navegador, incluido el
+celular en el campo.
 
-- **Esta app (online)** — gestión: clientes, lotes, dietas, pesadas,
-  entregas de alimento y alertas. Se usa desde cualquier navegador,
-  incluido el celular en el campo.
-  - **Inicio:** lo que hay que mirar hoy, los lotes activos y la agenda.
-    Cada lote tiene su **ficha** (peso, alimento, ración, controles) con
-    botones para cargar pesada, entrega, movimiento o cerrar el lote.
-  - **Clientes:** datos de cada cliente y sus lotes, activos y anteriores.
-  - **Más:** lotes terminados, dietas y carga completa, configuración y
-    esta ayuda.
+- **Inicio:** lo que hay que mirar hoy (pedir alimento, pesadas,
+  controles, alertas de clima), los lotes activos y la agenda. Arriba
+  está el botón para cargar un encierre nuevo.
+- **Ficha del lote:** peso medido y proyectado, alimento en el campo,
+  ración vigente, plan de adaptación, último control semanal,
+  movimientos e informes. Desde ahí cargás **pesada**, **entrega**,
+  **movimiento** (muerte, venta, compra) o **cerrás el lote**.
+- **Clientes:** datos de cada cliente y sus lotes, activos y anteriores.
+- **Más:** lotes terminados, dietas y carga completa, configuración y
+  esta ayuda.
 
-- **HMS Drone (local, en la Mac)** — procesamiento de las recorridas:
-  cuenta animales y estima pesos a partir de las fotos y videos del
-  drone. Corre en la Mac porque necesita la placa de video y archivos
-  pesados que no tiene sentido subir a la nube.
+### De dónde salen los números
 
-El nexo entre las dos es la **ficha del lote**: lo que la Mac calcula se
-guarda ahí, y aparece al instante en esta app.
-
-### El circuito de una recorrida
-
-1. **Volás el lote** con el drone, cenital (90°), a **10 m de altura**.
-   La altura la lee el sistema del propio archivo de la foto, así que no
-   hace falta poner ninguna referencia en el piso.
-
-2. **Procesás en la Mac** con HMS Drone: elegís la carpeta del vuelo y te
-   devuelve cantidad de animales y peso promedio por corral.
-
-3. **Guardás en la ficha** del cliente y lote correspondiente, desde la
-   misma app local.
-
-4. **Consultás acá**: la pesada aparece en la **ficha del lote**, con la
-   ganancia diaria y, si trae el peso de cada animal, la uniformidad.
-
-También podés cargar pesadas de balanza a mano desde la ficha del lote
-(botón **⚖ Pesada**). Para la ganancia diaria da lo mismo de dónde venga
-el dato.
-
-### Qué precisión esperar
-
-El peso estimado se validó contra balanza en La Esperanza Argentina
-(julio 2026): **error de ±5 %** en corrales pesados el día anterior.
-
-Dos condiciones importan mucho:
-
-- **Altura de 10 a 20 m.** Más arriba de 20 m el animal ocupa pocos
-  píxeles y el peso se va para arriba (en la prueba, +22 % a 50-100 m).
-  El sistema avisa cuando las fotos no son confiables para peso.
-
-- **Peso lleno vs vacío.** La estimación se comparó contra pesos llenos.
-  Si comparás contra un peso con desbaste, esperá una diferencia.
-
-El **conteo** es más exigente que el peso: en tropas apretadas el
-detector genérico pierde animales. Por eso conviene contar con fotos
-donde los animales estén separados, o revisar el número a ojo.
+- **Peso:** solo de pesadas (balanza o estimación cargada a mano). Entre
+  pesadas se proyecta con la ganancia medida y se marca como estimado.
+- **Alimento:** lo que se facturó o remitió en la gestión comercial pasa
+  solo todas las mañanas. El consumo de cada día sale de la ración
+  vigente, ajustada por el peso estimado de ese día.
+- **Clima:** pronóstico de la localidad de cada cliente con lote activo.
         """
     )

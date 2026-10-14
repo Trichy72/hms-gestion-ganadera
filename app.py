@@ -1854,10 +1854,11 @@ with st.sidebar:
 # ---------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------
-(tab_inicio, tab_clientes, tab_evo, tab_avanzado,
+(tab_hoy, tab_clientes, tab_inicio, tab_evo, tab_avanzado,
  tab_ia, tab_historial, tab_config, tab_help) = st.tabs([
     ":material/home: Inicio",
     ":material/groups: Clientes/Lotes",
+    ":material/dashboard: Panel completo",
     ":material/monitoring: Evolución",
     ":material/science: Análisis",
     ":material/neurology: Asesor IA",
@@ -1865,6 +1866,30 @@ with st.sidebar:
     ":material/settings: Configuración",
     ":material/help: Ayuda",
 ])
+
+
+# ------------------------- INICIO (celular) ---------------------------
+# Diseño nuevo aprobado el 14/10/2026: solo lotes activos, lo que hay
+# que mirar hoy y la ficha de cada lote. El panel anterior sigue en
+# la pestaña "Panel completo".
+with tab_hoy:
+    from src import ui_movil as _ui_movil
+
+    def _hm_abrir(lid):
+        st.session_state["hm_lote"] = lid
+        st.rerun()
+
+    def _hm_volver():
+        st.session_state.pop("hm_lote", None)
+        st.rerun()
+
+    try:
+        if st.session_state.get("hm_lote"):
+            _ui_movil.render_ficha(st.session_state["hm_lote"], _hm_volver)
+        else:
+            _ui_movil.render_inicio(_hm_abrir)
+    except Exception as _e_hm:
+        st.error(f"No se pudo armar la pantalla de inicio: {_e_hm}")
 
 
 # ----------------------------- INICIO ---------------------------------

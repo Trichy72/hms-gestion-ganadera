@@ -1744,9 +1744,8 @@ st.markdown(
     f'<div style="display:flex;justify-content:space-between;align-items:center;'
     f'gap:10px;padding:6px 0 10px;">'
     f'<div style="display:flex;align-items:center;gap:10px;">'
-    f'{_logo_html_hdr.replace("height:60px", "height:30px").replace("max-width:220px", "max-width:110px")}'
-    f'<div style="font-weight:700;font-size:17px;letter-spacing:.06em;">'
-    f'HMS <span style="color:#8BC53F">·</span> LOTES</div></div>'
+    f'{_logo_html_hdr.replace("height:30px", "height:46px").replace("max-width:110px", "max-width:150px").replace("height:60px", "height:40px").replace("max-width:220px", "max-width:150px")}'
+    f'</div>'
     f'<div style="font-size:12px;color:#8a8f98;text-align:right;">'
     f'{_fecha_es_hdr}</div></div>',
     unsafe_allow_html=True,

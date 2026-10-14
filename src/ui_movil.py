@@ -244,6 +244,13 @@ _CSS = f"""
 .hm-tile {{ margin-bottom: 0; padding: 12px 14px; }}
 .hm-tile .n {{ font-size: 11px; color: var(--hm-sub); letter-spacing: .6px; }}
 .hm-tile .f {{ font-size: 11px; color: var(--hm-sub); margin-top: 2px; }}
+.hm-hero .hm-kgrid {{ margin-top: 10px; }}
+.hm-hero .hm-tile {{ background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }}
+.hm-hero .hm-tile .n, .hm-hero .hm-tile .f {{ color: #C9D8CC; }}
+.hm-hero .hm-big {{ color: #FFFFFF; }}
+.hm-clima {{ display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; text-align: center; font-size: 12px; }}
+.hm-clima .ico {{ font-size: 18px; line-height: 1.6; }}
+.hm-clima .mx {{ font-weight: 700; }} .hm-clima .mn {{ color: var(--hm-sub); }}
 .hm-tl {{ display: grid; grid-template-columns: 0.9fr 1.05fr 1.15fr 0.9fr 1fr; gap: 4px; margin-top: 8px; }}
 .hm-tl .b {{ height: 6px; border-radius: 3px; }}
 .hm-tl .x {{ font-size: 10.5px; letter-spacing: -.2px; overflow-wrap: normal; word-break: keep-all; color: #C9D8CC; margin-top: 5px; line-height: 1.25; }}
@@ -365,25 +372,21 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     n_cli = len({d["lote"].get("cliente_id") for d in datos})
     resto = (f' · <b>{len(tareas)} cosa{"s" if len(tareas) != 1 else ""} para mirar</b>'
              if tareas else " · nada urgente hoy")
+    pedidos = _pedidos_proximos(datos)
+    try:
+        tiles = _resumen_inicio(datos, pedidos, hoy)
+    except Exception as e:
+        log.info("ui_movil: resumen: %s", e)
+        tiles = ""
     st.markdown(
-        f'<div class="hm"><div class="hm-top">'
+        f'<div class="hm"><div class="hm-top hm-hero">'
         f'<div class="t">{_saludo()}, Mauri</div>'
         f'<div class="s"><b>{n_anim} animales</b> en {len(datos)} lote{"s" if len(datos) != 1 else ""} '
         f'de {n_cli} cliente{"s" if n_cli != 1 else ""}{resto}.</div>'
+        f'<div class="hm-kgrid">{tiles}</div>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
-
-    if st.button("➕ Cargar encierre nuevo", key=f"{kp}_nuevo_enc", type="primary",
-                 width="stretch"):
-        from . import ui_gestion as _g
-        _g.dialog_encierre()
-
-    pedidos = _pedidos_proximos(datos)
-    try:
-        _resumen_inicio(datos, pedidos, hoy)
-    except Exception as e:
-        log.info("ui_movil: resumen: %s", e)
 
     col_a, col_b = st.columns([1.15, 1], gap="medium")
     with col_a:
@@ -398,8 +401,13 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 )
             st.markdown(h + "</div>", unsafe_allow_html=True)
 
-        st.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
-                    unsafe_allow_html=True)
+        c_l, c_b = st.columns([2, 1.3], vertical_alignment="center")
+        c_l.markdown('<div class="hm"><div class="hm-lbl">LOTES ACTIVOS</div></div>',
+                     unsafe_allow_html=True)
+        if c_b.button("➕ Encierre nuevo", key=f"{kp}_nuevo_enc", type="primary",
+                      width="stretch"):
+            from . import ui_gestion as _g
+            _g.dialog_encierre()
         if not datos:
             st.info("No hay lotes activos. Cargá un encierre con el botón de arriba.")
         for d in datos:
@@ -408,6 +416,10 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 on_abrir_lote(d["id"])
 
     with col_b:
+        try:
+            _clima_semana(datos)
+        except Exception as e:
+            log.info("ui_movil: clima semana: %s", e)
         if pedidos:
             h = ('<div class="hm"><div class="hm-lbl">PRÓXIMOS PEDIDOS DE ALIMENTO</div><div class="hm-card">'
                  '<table class="hm-tab"><tr><th>Cliente</th><th>Producto</th><th>Se termina</th>'
@@ -474,7 +486,7 @@ def _pedidos_proximos(datos: List[Dict]) -> List[Dict]:
     return out
 
 
-def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> None:
+def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> str:
     tiles = []
     num = den = 0.0
     kg_carne = 0.0
@@ -512,8 +524,7 @@ def _resumen_inicio(datos: List[Dict], pedidos: List[Dict], hoy: date) -> None:
                        f'{_num(kg_m, 0)}<span style="font-size:14px"> kg</span>',
                        (f"${_num(pl_m, 0)} sin IVA" if pl_m else
                         ("todavía no hubo entregas" if not filas else f"{len(filas)} entregas"))))
-    st.markdown(f'<div class="hm"><div class="hm-kgrid">{"".join(tiles)}</div></div>',
-                unsafe_allow_html=True)
+    return "".join(tiles)
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _alertas_clima(cliente_ids: tuple) -> list:
@@ -1035,3 +1046,52 @@ def _seccion_clima(lote: Dict) -> None:
         f'<th>Lluvia</th><th>Viento</th><th>Estrés</th></tr>{filas}</table>{al_html}</div></div>',
         unsafe_allow_html=True,
     )
+
+
+
+def _icono_dia(x: Dict) -> str:
+    lluvia = float(x.get("precipitacion_mm") or 0)
+    tmax = x.get("t_max")
+    thi = str(x.get("thi_estado") or "")
+    if lluvia >= 10:
+        return "🌧"
+    if lluvia >= 1:
+        return "🌦"
+    if tmax is not None and float(tmax) >= 32 or "estrés" in thi.lower() and "sin" not in thi.lower():
+        return "🔥"
+    if tmax is not None and float(tmax) <= 8:
+        return "🥶"
+    return "☀"
+
+
+def _clima_semana(datos: List[Dict]) -> None:
+    """Pronóstico de 7 días por localidad con lote activo."""
+    vistos = set()
+    bloques = ""
+    for d in datos:
+        cid = d["lote"].get("cliente_id")
+        info = _clima_cliente(cid)
+        if not info or info.get("estado") not in (None, "ok"):
+            continue
+        loc = info.get("localidad") or d.get("localidad") or ""
+        if loc in vistos:
+            continue
+        vistos.add(loc)
+        dias = [x for x in info.get("pronostico_7d") or []
+                if "HOY" in str(x.get("tramo")) or "Pronóstico" in str(x.get("tramo"))][:7]
+        if not dias:
+            continue
+        celdas = ""
+        for x in dias:
+            f = _fecha(x.get("fecha"))
+            nom = "Hoy" if "HOY" in str(x.get("tramo")) else (DIAS_SEM[f.weekday()] if f else "")
+            ll = float(x.get("precipitacion_mm") or 0)
+            celdas += (f'<div><div>{nom}</div><div class="ico">{_icono_dia(x)}</div>'
+                       f'<div class="mx">{_num(x.get("t_max"), 0)}°</div>'
+                       f'<div class="mn">{_num(x.get("t_min"), 0)}°</div>'
+                       f'<div class="mn">{_num(ll, 0) + " mm" if ll >= 1 else ""}</div></div>')
+        bloques += (f'<div class="hm-sub" style="margin:4px 0 6px"><b>{_e(loc)}</b> · '
+                    f'{_e(d["cliente"])}</div><div class="hm-clima">{celdas}</div>')
+    if bloques:
+        st.markdown(f'<div class="hm"><div class="hm-lbl">CLIMA DE LA SEMANA</div>'
+                    f'<div class="hm-card">{bloques}</div></div>', unsafe_allow_html=True)

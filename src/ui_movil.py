@@ -590,7 +590,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     except Exception as e:
         log.info("ui_movil: semaforos: %s", e)
 
-    col_a, col_b = st.columns([1.15, 1], gap="medium")
+    col_a = st.container()
     with col_a:
         if tareas:
             def _html_tareas(ts):
@@ -613,12 +613,6 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             st.markdown('<div class="hm"><div class="hm-lbl">PARA HOY</div><div class="hm-card">'
                         '<div class="hm-sub">Nada pendiente. Todo en orden.</div></div></div>',
                         unsafe_allow_html=True)
-
-    with col_b:
-        try:
-            _clima_catrilo()
-        except Exception as e:
-            log.info("ui_movil: clima semana: %s", e)
 
     try:
         _calendario(datos, hoy, kp)
@@ -1655,6 +1649,51 @@ def _clima_localidad(localidad: str) -> Dict:
     except Exception as e:
         log.info("ui_movil: clima %s: %s", localidad, e)
         return {}
+
+
+def clima_catrilo_header() -> str:
+    """Clima de Catriló en una tira chica para el encabezado, a la derecha
+    del logo: ahora y los 7 días (pasando el dedo o el mouse, el detalle)."""
+    try:
+        info = _clima_localidad("Catriló, La Pampa")
+    except Exception:
+        return ""
+    if not info or info.get("estado") not in (None, "ok"):
+        return ""
+    dias = [x for x in info.get("pronostico_7d") or []
+            if "HOY" in str(x.get("tramo")) or "Pronóstico" in str(x.get("tramo"))][:7]
+    cel = ""
+    for x in dias:
+        f = _fecha(x.get("fecha"))
+        nom = "Hoy" if "HOY" in str(x.get("tramo")) else (DIAS_SEM[f.weekday()] if f else "")
+        sev = str(x.get("severidad_real") or "")
+        alerta = sev[:1] in ("🔴", "🟠", "🟡") if sev else False
+        borde = ("box-shadow:inset 0 -3px 0 " + ("#D92D20" if sev[:1] == "🔴" else
+                 ("#F08C00" if sev[:1] == "🟠" else "#F2C200"))) if alerta else ""
+        cel += (f'<div class="hm-hc" style="{borde}" title="{_e(sev)} · HR {_num(x.get("hr_media"), 0)} % · '
+                f'viento {_num(x.get("viento_max_kmh"), 0)} km/h · THI {_num(x.get("thi"), 0)}">'
+                f'<div class="hm-hc-d">{nom}</div><div>{_icono_dia(x)}</div>'
+                f'<div><b>{_num(x.get("t_max"), 0)}°</b> <span class="hm-hc-m">{_num(x.get("t_min"), 0)}°</span></div></div>')
+    ahora = ""
+    if info.get("temp_c") is not None:
+        ahora = (f'<div class="hm-ha"><div class="hm-hc-d">CATRILÓ AHORA</div>'
+                 f'<div style="font-size:28px;font-weight:700;line-height:1.1">{_num(info["temp_c"], 0)}°</div>'
+                 f'<div class="hm-hc-m">HR {_num(info.get("humedad_pct"), 0)} % · THI {_num(info.get("thi"), 0)}</div></div>')
+    peor = str(info.get("severidad_real_max") or "")
+    aviso = ""
+    if peor and not peor.startswith("🟢"):
+        fp = _fecha(info.get("severidad_real_max_fecha"))
+        aviso = f'<div class="hm-hv">{_e(peor)}' + (f" el {_dm(fp)}" if fp else "") + "</div>"
+    css = ('<style>.hm-hw{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:0}'
+           '.hm-hr{display:flex;align-items:stretch;gap:4px}'
+           '.hm-ha{padding:4px 12px 4px 0;margin-right:4px;border-right:1px solid #e1e6dd;text-align:right;white-space:nowrap;flex:none}'
+           '.hm-hc{min-width:54px;padding:4px 5px 6px;border-radius:8px;background:rgba(127,140,130,.08);'
+           'text-align:center;font-size:13.5px;line-height:1.4}'
+           '.hm-hc-d{font-size:11px;letter-spacing:.04em;opacity:.65;font-weight:600}'
+           '.hm-hc-m{opacity:.6;font-size:12px}.hm-hv{font-size:12.5px;opacity:.85}'
+           '@media (max-width:760px){.hm-hw{align-items:stretch;width:100%}'
+           '.hm-hr{overflow-x:auto;-webkit-overflow-scrolling:touch}.hm-hc{min-width:48px;flex:none;font-size:12.5px}}</style>')
+    return f'{css}<div class="hm-hw"><div class="hm-hr">{ahora}{cel}</div>{aviso}</div>'
 
 
 def _clima_catrilo() -> None:

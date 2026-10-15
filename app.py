@@ -1731,6 +1731,12 @@ elif _logo_path_hdr.exists():
         'object-fit:contain;" />'
     )
 
+try:
+    from src.ui_movil import clima_catrilo_header as _clima_hdr_fn
+    _clima_hdr = _clima_hdr_fn()
+except Exception:
+    _clima_hdr = ""
+
 st.markdown(
     '<style>'
     '.block-container{padding-top:3.4rem !important;}'
@@ -1741,13 +1747,13 @@ st.markdown(
     '@media (max-width:640px){.block-container{padding-left:.8rem !important;'
     'padding-right:.8rem !important;}}'
     '</style>'
-    f'<div style="display:flex;justify-content:space-between;align-items:center;'
+    f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;'
     f'gap:10px;padding:6px 0 10px;">'
     f'<div style="display:flex;align-items:center;gap:10px;">'
     f'{_logo_html_hdr.replace("height:30px", "height:64px").replace("max-width:110px", "max-width:240px").replace("height:60px", "height:40px").replace("max-width:220px", "max-width:150px")}'
     f'</div>'
-    f'<div style="font-size:12px;color:#8a8f98;text-align:right;">'
-    f'{_fecha_es_hdr}</div></div>',
+    f'{_clima_hdr or ("<div style=" + chr(34) + "font-size:12px;color:#8a8f98;text-align:right;" + chr(34) + ">" + _fecha_es_hdr + "</div>")}'
+    f'</div>',
     unsafe_allow_html=True,
 )
 

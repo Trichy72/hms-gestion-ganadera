@@ -1283,9 +1283,14 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
     _analisis_ia(lote, d, kp)
 
 
-_COL_SIT = {"rojo": ("#FBE3E1", "#B42318"), "amarillo": ("#FCEFD2", "#9A6700")}
-_AREA_SIT = {"consumo": "Comedero", "alimento": "Alimento", "agua": "Agua", "ambiente": "Corral",
-             "sanidad": "Sanidad", "manejo": "Manejo", "objetivo": "Objetivo"}
+# (clave, ícono, nombre, áreas de los puntos débiles, preguntas de la entrevista)
+_GRUPOS_SIT = [
+    ("sanidad", "🩺", "Sanidad", {"sanidad"}, ("A8", "B")),
+    ("comedero", "🌾", "Comedero", {"consumo", "alimento"}, ("C", "A7", "A10")),
+    ("agua", "💧", "Agua", {"agua"}, ("D",)),
+    ("corral", "🏠", "Instalaciones", {"ambiente"}, ("E",)),
+    ("manejo", "👤", "Manejo", {"manejo", "objetivo"}, ("F", "A5", "A6")),
+]
 
 
 def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
@@ -1305,16 +1310,40 @@ def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
         return
     pts = ent.puntos_debiles(r, lote, d.get("peso_hoy") or d.get("peso"))
     falt = ent.faltantes(r)
-    filas = []
-    for p in pts:
-        bg, fg = _COL_SIT.get(p["nivel"], ("var(--hm-chip)", "var(--hm-sub)"))
-        fuente = f'<div class="hm-sub" style="font-size:12px">Fuente: {_e(p["fuente"])}</div>' if p.get("fuente") else ""
-        filas.append(f'<div style="display:flex;gap:8px;margin:6px 0"><span style="background:{bg};color:{fg};'
-                     f'border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600;white-space:nowrap;'
-                     f'height:fit-content">{_AREA_SIT.get(p["area"], p["area"])}</span>'
-                     f'<div>{_e(p["texto"])}.{fuente}</div></div>')
-    if not filas:
-        filas.append('<div class="hm-sub">Sin puntos débiles con lo que se contestó.</div>')
+    # Un ícono por área con su semáforo abajo; el detalle va agrupado debajo.
+    tiles, filas = [], []
+    for _k, ico, nombre, areas, claves in _GRUPOS_SIT:
+        ps = [p for p in pts if p["area"] in areas]
+        contestado = any(any(k.startswith(c) for c in claves) for k in r)
+        n_r = sum(p["nivel"] == "rojo" for p in ps)
+        n_a = len(ps) - n_r
+        if n_r:
+            col, txt = "#D92D20", f'{n_r} rojo{"s" if n_r != 1 else ""}' + (f" · {n_a} a mirar" if n_a else "")
+        elif n_a:
+            col, txt = "#E8A317", f'{n_a} para mirar'
+        elif contestado:
+            col, txt = "#2E9E57", "bien"
+        else:
+            col, txt = "#B8B8B8", "sin datos"
+        tiles.append(f'<div style="border:1px solid var(--hm-line,#e5e5e5);border-radius:12px;padding:10px 6px;'
+                     f'text-align:center;background:var(--hm-card-bg,transparent)">'
+                     f'<div style="font-size:26px;line-height:1">{ico}</div>'
+                     f'<div style="font-size:13px;font-weight:600;margin:4px 0 6px">{nombre}</div>'
+                     f'<div style="width:18px;height:18px;border-radius:50%;background:{col};margin:0 auto 4px;'
+                     f'box-shadow:0 0 0 3px {col}33"></div>'
+                     f'<div class="hm-sub" style="font-size:12px">{txt}</div></div>')
+        if ps:
+            items = []
+            for p in ps:
+                c = "#D92D20" if p["nivel"] == "rojo" else "#E8A317"
+                fuente = (f'<div class="hm-sub" style="font-size:12px">Fuente: {_e(p["fuente"])}</div>'
+                          if p.get("fuente") else "")
+                items.append(f'<div style="display:flex;gap:8px;margin:5px 0"><span style="flex:none;width:10px;'
+                             f'height:10px;border-radius:50%;background:{c};margin-top:5px"></span>'
+                             f'<div>{_e(p["texto"])}.{fuente}</div></div>')
+            filas.append(f'<div style="margin-top:10px"><b>{ico} {nombre}</b>{"".join(items)}</div>')
+    filas.insert(0, '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));'
+                    f'gap:8px;margin:6px 0 2px">{"".join(tiles)}</div>')
     vig = ent.preguntas_semanales(pts)
     vig_txt = ", ".join(ent.CONTROL_TXT.get(k, k) for k in vig if k != "12")
     n_r = sum(p["nivel"] == "rojo" for p in pts)

@@ -1284,12 +1284,21 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
 
 
 # (clave, ícono, nombre, áreas de los puntos débiles, preguntas de la entrevista)
+# (clave, ícono, nombre, áreas de los puntos débiles, preguntas de la entrevista)
+_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+_ICON_SIT = {
+    'sanidad': '<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M12 8.5v6M9 11.5h6"/>',
+    'comedero': '<path d="M3 10h18l-2.2 7.5a1.5 1.5 0 0 1-1.4 1H6.6a1.5 1.5 0 0 1-1.4-1z"/><path d="M7 7.5c1.2-1.6 2.6-1.6 3.8 0M13.2 7.5c1.2-1.6 2.6-1.6 3.8 0"/><path d="M6 18.5V21M18 18.5V21"/>',
+    'agua': '<path d="M12 3.5c3.2 3.8 6 7.2 6 10.3a6 6 0 0 1-12 0c0-3.1 2.8-6.5 6-10.3z"/><path d="M9.2 14.5a2.9 2.9 0 0 0 2.8 2.6"/>',
+    'corral': '<path d="M3 11l9-6.5 9 6.5"/><path d="M5 9.7V20h14V9.7"/><path d="M9.5 20v-5h5v5"/><path d="M9.5 15l5 5M14.5 15l-5 5"/>',
+    'manejo': '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M8.5 11l1.6 1.6 3-3"/><path d="M8.5 16.5h7"/>',
+}
 _GRUPOS_SIT = [
-    ("sanidad", "🩺", "Sanidad", {"sanidad"}, ("A8", "B")),
-    ("comedero", "🌾", "Comedero", {"consumo", "alimento"}, ("C", "A7", "A10")),
-    ("agua", "💧", "Agua", {"agua"}, ("D",)),
-    ("corral", "🏠", "Instalaciones", {"ambiente"}, ("E",)),
-    ("manejo", "👤", "Manejo", {"manejo", "objetivo"}, ("F", "A5", "A6")),
+    ("sanidad", _SVG + _ICON_SIT["sanidad"] + "</svg>", "Sanidad", {"sanidad"}, ("A8", "B")),
+    ("comedero", _SVG + _ICON_SIT["comedero"] + "</svg>", "Comedero", {"consumo", "alimento"}, ("C", "A7", "A10")),
+    ("agua", _SVG + _ICON_SIT["agua"] + "</svg>", "Agua", {"agua"}, ("D",)),
+    ("corral", _SVG + _ICON_SIT["corral"] + "</svg>", "Instalaciones", {"ambiente"}, ("E",)),
+    ("manejo", _SVG + _ICON_SIT["manejo"] + "</svg>", "Manejo", {"manejo", "objetivo"}, ("F", "A5", "A6")),
 ]
 
 
@@ -1320,14 +1329,15 @@ def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
         if n_r:
             col, txt = "#D92D20", f'{n_r} rojo{"s" if n_r != 1 else ""}' + (f" · {n_a} a mirar" if n_a else "")
         elif n_a:
-            col, txt = "#E8A317", f'{n_a} para mirar'
+            col, txt = "#F2C200", f'{n_a} para mirar'
         elif contestado:
             col, txt = "#2E9E57", "bien"
         else:
             col, txt = "#B8B8B8", "sin datos"
         tiles.append(f'<div style="border:1px solid var(--hm-line,#e5e5e5);border-radius:12px;padding:10px 6px;'
                      f'text-align:center;background:var(--hm-card-bg,transparent)">'
-                     f'<div style="font-size:26px;line-height:1">{ico}</div>'
+                     f'<div style="width:46px;height:46px;border-radius:50%;background:var(--hm-soft);color:var(--hm-est);'
+                     f'display:flex;align-items:center;justify-content:center;margin:0 auto">{ico}</div>'
                      f'<div style="font-size:13px;font-weight:600;margin:4px 0 6px">{nombre}</div>'
                      f'<div style="width:18px;height:18px;border-radius:50%;background:{col};margin:0 auto 4px;'
                      f'box-shadow:0 0 0 3px {col}33"></div>'
@@ -1335,13 +1345,16 @@ def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
         if ps:
             items = []
             for p in ps:
-                c = "#D92D20" if p["nivel"] == "rojo" else "#E8A317"
+                c = "#D92D20" if p["nivel"] == "rojo" else "#F2C200"
                 fuente = (f'<div class="hm-sub" style="font-size:12px">Fuente: {_e(p["fuente"])}</div>'
                           if p.get("fuente") else "")
                 items.append(f'<div style="display:flex;gap:8px;margin:5px 0"><span style="flex:none;width:10px;'
                              f'height:10px;border-radius:50%;background:{c};margin-top:5px"></span>'
                              f'<div>{_e(p["texto"])}.{fuente}</div></div>')
-            filas.append(f'<div style="margin-top:10px"><b>{ico} {nombre}</b>{"".join(items)}</div>')
+            ico_chico = ico.replace('width="26" height="26"', 'width="17" height="17"')
+            filas.append(f'<div style="margin-top:10px"><b style="display:inline-flex;align-items:center;gap:6px">'
+                         f'<span style="color:var(--hm-est);display:inline-flex">{ico_chico}</span>{nombre}</b>'
+                         f'{"".join(items)}</div>')
     filas.insert(0, '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));'
                     f'gap:8px;margin:6px 0 2px">{"".join(tiles)}</div>')
     vig = ent.preguntas_semanales(pts)

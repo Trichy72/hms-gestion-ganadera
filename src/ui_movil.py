@@ -1670,10 +1670,18 @@ def clima_catrilo_header() -> str:
         alerta = sev[:1] in ("🔴", "🟠", "🟡") if sev else False
         borde = ("box-shadow:inset 0 -3px 0 " + ("#D92D20" if sev[:1] == "🔴" else
                  ("#F08C00" if sev[:1] == "🟠" else "#F2C200"))) if alerta else ""
-        cel += (f'<div class="hm-hc" style="{borde}" title="{_e(sev)} · HR {_num(x.get("hr_media"), 0)} % · '
-                f'viento {_num(x.get("viento_max_kmh"), 0)} km/h · THI {_num(x.get("thi"), 0)}">'
+        lluvia = x.get("precipitacion_mm")
+        tip = (f'<span class="hm-tip"><b>{nom}{(" " + str(f.day) + "/" + str(f.month)) if f else ""}</b><br>'
+               f'{_e(_sev_corta(x))}<br>Mín {_num(x.get("t_min"), 0)}° · máx {_num(x.get("t_max"), 0)}°<br>'
+               f'Humedad {_num(x.get("hr_media"), 0)} %<br>Viento {_num(x.get("viento_max_kmh"), 0)} km/h<br>'
+               f'Lluvia {(_num(lluvia, 0) + " mm") if lluvia else "no"}<br>'
+               f'THI {_num(x.get("thi"), 0)}'
+               + (f' · tarde {_num(x.get("thi_ajustado"), 0)}' if x.get("thi_ajustado") is not None else "")
+               + '</span>')
+        cel += (f'<div class="hm-hc" tabindex="0" style="{borde}">'
                 f'<div class="hm-hc-d">{nom}</div><div>{_icono_dia(x)}</div>'
-                f'<div><b>{_num(x.get("t_max"), 0)}°</b> <span class="hm-hc-m">{_num(x.get("t_min"), 0)}°</span></div></div>')
+                f'<div><b>{_num(x.get("t_max"), 0)}°</b> <span class="hm-hc-m">{_num(x.get("t_min"), 0)}°</span></div>'
+                f'{tip}</div>')
     ahora = ""
     if info.get("temp_c") is not None:
         ahora = (f'<div class="hm-ha"><div class="hm-hc-d">CATRILÓ AHORA</div>'
@@ -1690,8 +1698,14 @@ def clima_catrilo_header() -> str:
            '.hm-hc{min-width:54px;padding:4px 5px 6px;border-radius:8px;background:rgba(127,140,130,.08);'
            'text-align:center;font-size:13.5px;line-height:1.4}'
            '.hm-hc-d{font-size:11px;letter-spacing:.04em;opacity:.65;font-weight:600}'
+           '.hm-hc{position:relative;cursor:default}.hm-hc:hover,.hm-hc:focus{background:rgba(127,140,130,.18);outline:none}'
+           '.hm-tip{display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:50;min-width:170px;'
+           'background:#1B3E27;color:#fff;border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.5;'
+           'text-align:left;box-shadow:0 6px 18px rgba(0,0,0,.18);white-space:nowrap}'
+           '.hm-hc:hover .hm-tip,.hm-hc:focus .hm-tip{display:block}'
            '.hm-hc-m{opacity:.6;font-size:12px}.hm-hv{font-size:12.5px;opacity:.85}'
            '@media (max-width:760px){.hm-hw{align-items:stretch;width:100%}'
+           '.hm-tip{position:fixed;top:auto;bottom:16px;left:16px;right:16px;min-width:0;white-space:normal;font-size:14px}'
            '.hm-hr{overflow-x:auto;-webkit-overflow-scrolling:touch}.hm-hc{min-width:48px;flex:none;font-size:12.5px}}</style>')
     return f'{css}<div class="hm-hw"><div class="hm-hr">{ahora}{cel}</div>{aviso}</div>'
 

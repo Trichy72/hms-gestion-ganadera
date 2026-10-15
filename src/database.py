@@ -3562,14 +3562,18 @@ def guardar_preferencia(clave: str, valor: str) -> None:
     SQLite (3.24+) y Postgres; el backend traduce los placeholders.
     """
     _ensure_preferencias_table()
-    with get_conn() as conn:
-        conn.execute(
-            """INSERT INTO preferencias_app (clave, valor)
+    # En Postgres el adaptador agrega "RETURNING id" a todo INSERT que no
+    # tenga RETURNING, y esta tabla no tiene columna id: el guardado
+    # fallaba en silencio (por eso el link con ?acceso no sobrevivía a un
+    # reinicio). Se pide RETURNING clave explícito.
+    sql = """INSERT INTO preferencias_app (clave, valor)
                VALUES (?, ?)
                ON CONFLICT (clave) DO UPDATE
-                 SET valor = excluded.valor""",
-            (clave, str(valor)),
-        )
+                 SET valor = excluded.valor"""
+    if _usando_postgres():
+        sql += " RETURNING clave"
+    with get_conn() as conn:
+        conn.execute(sql, (clave, str(valor)))
 
 
 @_cache_lectura

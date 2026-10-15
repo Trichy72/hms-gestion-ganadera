@@ -195,6 +195,11 @@ def dialog_encierre(cliente_id: Optional[int] = None):
         cant = c4.number_input("Animales", min_value=1, value=30, step=1)
         peso = st.number_input("Peso promedio al entrar (kg, si se pesó)", min_value=0.0, step=1.0)
         com = st.selectbox("Comedero", list(COMEDEROS))
+        c5, c6 = st.columns(2)
+        p_venta = c5.number_input("Peso de venta buscado (kg)", min_value=0.0, step=5.0,
+                                  help="Para estimar la fecha de salida. Dejalo en 0 si no lo sabés.")
+        g_esp = c6.number_input("Ganancia esperada (kg/día)", min_value=0.0, step=0.05, format="%.2f",
+                                help="Si lo dejás en 0 se usa la de la categoría.")
         notas = st.text_area("Notas (orígenes, sanidad, ración de arranque…)", height=80)
         ok = st.form_submit_button("Guardar encierre", type="primary", width="stretch")
     if ok:
@@ -211,13 +216,36 @@ def dialog_encierre(cliente_id: Optional[int] = None):
                             cantidad_inicial=int(cant), peso_ingreso_kg=float(peso),
                             notas=notas)
         try:
-            db.actualizar_lote(lid, tipo_comedero_concentrado=COMEDEROS[com])
+            extra = {"tipo_comedero_concentrado": COMEDEROS[com]}
+            if p_venta > 0:
+                extra["objetivo_peso_kg"] = float(p_venta)
+            if g_esp > 0:
+                extra["adpv_objetivo_kg"] = float(g_esp)
+            db.actualizar_lote(lid, **extra)
         except Exception:
             pass
         if peso > 0:
             db.guardar_pesada(lid, _iso(f), "balanza", int(cant), float(peso),
                               float(peso) * cant, None, notas="Pesada inicial, inicio del encierre.")
         st.success("Encierre guardado.")
+        _refrescar()
+
+
+@st.dialog("Objetivos del lote")
+def dialog_objetivos(lote_id: int):
+    l = db.obtener_lote(lote_id) or {}
+    st.caption("Con esto se calcula si el lote viene engordando lo esperado y cuándo sale.")
+    with st.form("f_objetivos"):
+        p_venta = st.number_input("Peso de venta buscado (kg)", min_value=0.0, step=5.0,
+                                  value=float(l.get("objetivo_peso_kg") or 0))
+        g_esp = st.number_input("Ganancia esperada (kg/día)", min_value=0.0, step=0.05, format="%.2f",
+                                value=float(l.get("adpv_objetivo_kg") or 0),
+                                help="En 0 se usa la ganancia típica de la categoría.")
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        db.actualizar_lote(lote_id, objetivo_peso_kg=(float(p_venta) or None),
+                           adpv_objetivo_kg=(float(g_esp) or None))
+        st.success("Guardado.")
         _refrescar()
 
 

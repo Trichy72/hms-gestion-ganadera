@@ -189,7 +189,108 @@ def datos_lote(lote: Dict, hoy: Optional[date] = None) -> Dict:
         (lid,),
     )
     d["control"] = ctrl[0] if ctrl else None
+    try:
+        _seguimiento(d, hoy)
+    except Exception as e:
+        log.info("ui_movil: seguimiento lote %s: %s", lid, e)
     return d
+
+
+_AREAS_TXT = (("sanidad", "sanidad"), ("consumo", "consumo"),
+              ("ambiente", "ambiente"), ("alimento", "alimento"))
+
+
+def _seguimiento(d: Dict, hoy: date) -> None:
+    """Datos para la tabla de seguimiento: ración, engorde contra lo
+    esperado, consumo real, salida estimada, último contacto, muertes."""
+    lote = d["lote"]
+    lid = d["id"]
+
+    # Semáforo con el área que lo puso en ese color (control de 7 días)
+    ctrl = d.get("control") or {}
+    f_c = _fecha(ctrl.get("fecha_respuesta") or ctrl.get("fecha_envio"))
+    col = (ctrl.get("semaforo_general") or "").lower()
+    if f_c and (hoy - f_c).days <= 7 and col in ("verde", "amarillo", "rojo"):
+        areas = [n for k, n in _AREAS_TXT if (ctrl.get(f"semaforo_{k}") or "").lower() == col]
+        d["sem"] = col
+        d["sem_txt"] = ", ".join(areas) if col != "verde" else "bien"
+    else:
+        d["sem"] = "sin"
+        d["sem_txt"] = "sin control" if not f_c else f"último {_dm(f_c)}"
+
+    # Pedido: dos días antes de que se termine
+    sm = d.get("stock_min") or {}
+    fa = _fecha(sm.get("fecha_agotamiento"))
+    d["pedir"] = (fa - timedelta(days=2)) if fa else None
+
+    # Ración: en qué escalón del plan está y cuándo cambia
+    dietas = _sql("SELECT fecha FROM dietas WHERE lote_id = ? ORDER BY fecha", (lid,))
+    fechas = [x for x in (_fecha(r.get("fecha")) for r in dietas) if x]
+    vig = [f for f in fechas if f <= hoy]
+    prox = [f for f in fechas if f > hoy]
+    if not fechas:
+        d["racion_txt"] = "sin ración cargada"
+    elif prox:
+        d["racion_txt"] = f"escalón {len(vig)} de {len(fechas)}, cambia el {_dm(prox[0])}"
+        d["racion_cambio"] = prox[0]
+    elif len(fechas) > 1:
+        d["racion_txt"] = f"ración final desde el {_dm(vig[-1])}"
+    else:
+        d["racion_txt"] = f"ración del {_dm(vig[-1])}"
+
+    # Ganancia esperada: la del lote, o la de la categoría
+    esp = lote.get("adpv_objetivo_kg")
+    if not esp:
+        r = _sql("SELECT adpv_default_kg_dia FROM categorias_animales WHERE nombre = ?",
+                 ((lote.get("categoria") or "").lower(),))
+        esp = (r[0].get("adpv_default_kg_dia") if r else None) or None
+    d["adpv_esp"] = float(esp) if esp else None
+    if d.get("adpv") is not None and d["adpv_esp"]:
+        d["engorde_pct"] = d["adpv"] / d["adpv_esp"] * 100
+
+    # Peso hoy (última pesada + ganancia) y fecha estimada de salida
+    gan = d.get("adpv") if d.get("adpv") is not None else d.get("adpv_esp")
+    if d.get("peso") and d.get("fecha_peso") and gan:
+        d["peso_hoy"] = float(d["peso"]) + gan * (hoy - d["fecha_peso"]).days
+    obj = lote.get("objetivo_peso_kg")
+    d["peso_venta"] = float(obj) if obj else None
+    if obj and d.get("peso_hoy") and gan and gan > 0:
+        faltan = (float(obj) - d["peso_hoy"]) / gan
+        d["salida"] = hoy + timedelta(days=max(0, int(round(faltan))))
+
+    # Consumo real contra el teórico, por entregas: lo entregado antes de
+    # la última entrega contra lo que tendrían que haber comido hasta esa
+    # fecha (se pide cuando se está terminando). Solo con 2+ entregas y
+    # al menos 14 días entre la primera y la última.
+    try:
+        from . import stock_producto as sp
+        ents = sorted(sm.get("entregas") or [], key=lambda e: str(e.get("fecha_entrega")))
+        if len(ents) >= 2:
+            f1, fu = _fecha(ents[0].get("fecha_entrega")), _fecha(ents[-1].get("fecha_entrega"))
+            if f1 and fu and (fu - f1).days >= 14:
+                kg_antes = sum(float(e.get("kg_total") or 0) for e in ents[:-1])
+                teo = sp._consumo_acumulado_kg(
+                    lid, sm["producto"], f1.isoformat(), (fu - timedelta(days=1)).isoformat())
+                if teo and teo > 0:
+                    ratio = kg_antes / teo * 100
+                    if 30 <= ratio <= 300:
+                        d["consumo_pct"] = ratio
+    except Exception as e:
+        log.info("ui_movil: consumo real lote %s: %s", lid, e)
+
+    # Último contacto: control, pesada o entrega más reciente
+    cands = [f_c, d.get("fecha_peso")]
+    ent = _sql("SELECT max(fecha_entrega) AS f FROM entregas_producto WHERE lote_id = ?", (lid,))
+    cands.append(_fecha(ent[0].get("f")) if ent else None)
+    cands = [c for c in cands if c]
+    d["ult_contacto"] = max(cands) if cands else None
+
+    # Muertes acumuladas
+    m = _sql("SELECT COALESCE(SUM(ABS(cantidad)), 0) AS n FROM movimientos "
+             "WHERE lote_id = ? AND tipo = 'muerte'", (lid,))
+    d["muertes"] = int((m[0].get("n") if m else 0) or 0)
+    ini = lote.get("cantidad_inicial") or 0
+    d["muertes_pct"] = d["muertes"] / ini * 100 if ini else None
 
 
 def _estado_stock(dias) -> str:
@@ -487,7 +588,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             h += '<div class="hm-sub">Sin tareas en las próximas dos semanas.</div>'
         st.markdown(h + "</div></div>", unsafe_allow_html=True)
         try:
-            _clima_semana(datos)
+            _clima_catrilo()
         except Exception as e:
             log.info("ui_movil: clima semana: %s", e)
 
@@ -496,9 +597,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 f'{n_cli}</div></div>', unsafe_allow_html=True)
     if not datos:
         st.info("No hay lotes activos. Cargá un encierre con el botón de abajo.")
-    datos_ord = sorted(datos, key=lambda x: ((x.get("stock_min") or {}).get("dias_restantes")
-                                              if (x.get("stock_min") or {}).get("dias_restantes") is not None
-                                              else 9999))
+    datos_ord = sorted(datos, key=_urgencia)
     if datos_ord:
         _tabla_lotes(datos_ord, on_abrir_lote, kp)
     _, c_b = st.columns([3, 1])
@@ -823,6 +922,12 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
         except Exception as e:
             st.caption(f"No se pudo dibujar el peso: {e}")
 
+        # Seguimiento: engorde contra lo esperado, salida, consumo
+        try:
+            _seccion_seguimiento(lote, d, kp)
+        except Exception as e:
+            st.caption(f"No se pudo mostrar el seguimiento: {e}")
+
         # Alimento
         try:
             h = '<div class="hm"><div class="hm-lbl">ALIMENTO</div><div class="hm-card">'
@@ -859,10 +964,6 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
             st.caption(f"No se pudo mostrar una sección: {e}")
 
     with col_b:
-        try:
-            _seccion_clima(lote)
-        except Exception as e:
-            st.caption(f"No se pudo mostrar el clima: {e}")
         # Control semanal
         try:
             ctrl = d.get("control")
@@ -934,6 +1035,54 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
             pp = d.get("proxima_pesada")
             h += f'<div class="hm-sub">Todavía no hay. El primero sale después de la pesada{" del " + _dm(pp) if pp else ""}.</div>'
         st.markdown(h + "</div></div>", unsafe_allow_html=True)
+
+    # Clima del campo a lo ancho: con todos los datos para estimar estrés
+    try:
+        _seccion_clima(lote)
+    except Exception as e:
+        st.caption(f"No se pudo mostrar el clima: {e}")
+
+
+def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
+    hoy = date.today()
+    filas = []
+    if d.get("adpv") is not None:
+        esp = d.get("adpv_esp")
+        txt = f"<b>{_num(d['adpv'], 2)} kg/día</b>"
+        if esp:
+            p = d.get("engorde_pct") or 0
+            nota = "viene bien" if p >= 95 else ("algo por debajo" if p >= 85 else "se está quedando")
+            txt += (f" contra {_num(esp, 2)} esperados ({_num(p, 0)} %, {nota})"
+                    + ("" if lote.get("adpv_objetivo_kg") else " · esperado de la categoría"))
+        filas.append(("Engorde", txt))
+    else:
+        filas.append(("Engorde", "hace falta una segunda pesada"))
+    if d.get("peso_venta"):
+        if d.get("salida"):
+            filas.append(("Salida estimada", f"<b>{_dm(d['salida'])}</b> para llegar a "
+                          f"{_num(d['peso_venta'], 0)} kg (hoy ~{_num(d.get('peso_hoy'), 0)} kg)"))
+        else:
+            filas.append(("Salida estimada", f"peso de venta {_num(d['peso_venta'], 0)} kg; falta una pesada"))
+    else:
+        filas.append(("Salida estimada", "cargá el peso de venta con el botón de abajo"))
+    if d.get("consumo_pct") is not None:
+        cp = d["consumo_pct"]
+        nota = ("comen más de lo que dice la ración" if cp > 115 else
+                ("comen menos de lo que dice la ración" if cp < 85 else "coincide con la ración"))
+        filas.append(("Consumo real", f"<b>{_num(cp, 0)} %</b> de lo formulado: {nota}"))
+    else:
+        filas.append(("Consumo real", "se calcula cuando haya dos entregas separadas por 2 semanas o más"))
+    filas.append(("Ración", _e(d.get("racion_txt") or "—")))
+    filas.append(("Último contacto", _hace(d.get("ult_contacto"), hoy)))
+    m = d.get("muertes") or 0
+    filas.append(("Muertes", f"{m}" + (f" ({_num(d['muertes_pct'], 1)} %)" if d.get("muertes_pct") is not None else "")))
+    h = "".join(f'<tr><td class="hm-sub" style="white-space:nowrap">{k}</td><td>{v}</td></tr>' for k, v in filas)
+    st.markdown(f'<div class="hm"><div class="hm-lbl">SEGUIMIENTO</div><div class="hm-card">'
+                f'<table class="hm-tab">{h}</table></div></div>', unsafe_allow_html=True)
+    from . import ui_gestion as _g
+    if st.button("🎯 Objetivos del lote (peso de venta, ganancia esperada)",
+                 key=f"{kp}_obj_{d['id']}", width="stretch"):
+        _g.dialog_objetivos(d["id"])
 
 
 def _seccion_racion(lote_id: int, d: Dict) -> None:
@@ -1099,40 +1248,124 @@ def _clima_cliente(cliente_id: int) -> Dict:
     return dashboard.obtener_clima_para_cliente(c) if c else {}
 
 
+def _sev_corta(x: Dict) -> str:
+    """Severidad real (THI ajustado por viento, frío sentido, lluvia y
+    barro) en pocas palabras."""
+    sev = str(x.get("severidad_real") or "")
+    return sev if sev else "—"
+
+
+def _cielo(n) -> str:
+    if n is None:
+        return "—"
+    n = float(n)
+    return "despejado" if n < 30 else ("parcial" if n < 70 else "cubierto")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _clima_localidad(localidad: str) -> Dict:
+    from . import dashboard
+    try:
+        return dashboard.obtener_clima_para_cliente(
+            {"id": -1, "nombre": localidad, "localidad": localidad}) or {}
+    except Exception as e:
+        log.info("ui_movil: clima %s: %s", localidad, e)
+        return {}
+
+
+def _clima_catrilo() -> None:
+    """Clima de Catriló como referencia de la zona, en Inicio."""
+    info = _clima_localidad("Catriló, La Pampa")
+    if not info or info.get("estado") not in (None, "ok"):
+        return
+    dias = [x for x in info.get("pronostico_7d") or []
+            if "HOY" in str(x.get("tramo")) or "Pronóstico" in str(x.get("tramo"))][:7]
+    if not dias:
+        return
+    cab = celdas = ""
+    for x in dias:
+        f = _fecha(x.get("fecha"))
+        nom = "Hoy" if "HOY" in str(x.get("tramo")) else (DIAS_SEM[f.weekday()] if f else "")
+        sev = str(x.get("severidad_real") or "")
+        punto = sev[:1] if sev and sev[:1] in "🔴🟠🟡" else ""
+        cab += f"<th>{nom}</th>"
+        celdas += (f'<td title="{_e(sev)} · HR {_num(x.get("hr_media"), 0)} % · '
+                   f'viento {_num(x.get("viento_max_kmh"), 0)} km/h · THI {_num(x.get("thi"), 0)}">'
+                   f'{_icono_dia(x)}<br><b>{_num(x.get("t_max"), 0)}°</b>'
+                   f'<div class="hm-sub">{_num(x.get("t_min"), 0)}°</div>'
+                   f'{punto}</td>')
+    ahora = ""
+    if info.get("temp_c") is not None:
+        ahora = (f'<div class="hm-sub" style="margin-bottom:6px">Ahora <b>{_num(info["temp_c"], 0)}°</b>, '
+                 f'humedad {_num(info.get("humedad_pct"), 0)} %, THI {_num(info.get("thi"), 0)} · '
+                 f'{_e(info.get("thi_estado") or "")}</div>')
+    peor = str(info.get("severidad_real_max") or "")
+    aviso = ""
+    if peor and not peor.startswith("🟢"):
+        fp = _fecha(info.get("severidad_real_max_fecha"))
+        aviso = (f'<div class="hm-nota">{_e(peor)}' + (f" el {_dm(fp)}" if fp else "")
+                 + ". Mirá la ficha de cada lote para el detalle de su zona.</div>")
+    st.markdown(
+        f'<div class="hm"><div class="hm-lbl">CLIMA EN CATRILÓ · REFERENCIA DE LA ZONA</div>'
+        f'<div class="hm-card">{ahora}<table class="hm-tab hm-climat"><tr>{cab}</tr><tr>{celdas}</tr></table>'
+        f'{aviso}</div></div>', unsafe_allow_html=True)
+
+
 def _seccion_clima(lote: Dict) -> None:
+    """Clima del campo del cliente con todo lo que hace falta para
+    estimar estrés por calor o frío: temperatura, humedad, viento,
+    cielo, lluvia, THI y la severidad real para el bovino."""
     info = _clima_cliente(lote.get("cliente_id"))
     if not info or info.get("estado") not in (None, "ok"):
         return
-    pron = [x for x in info.get("pronostico_7d") or []
-            if "Pronóstico" in str(x.get("tramo")) or "HOY" in str(x.get("tramo"))][:6]
-    if not pron and info.get("temp_c") is None:
+    todos = info.get("pronostico_7d") or []
+    i_hoy = next((i for i, x in enumerate(todos) if "HOY" in str(x.get("tramo"))), None)
+    if i_hoy is None:
+        dias = todos[-8:]
+    else:
+        dias = todos[max(0, i_hoy - 3): i_hoy + 8]   # 3 días atrás, hoy y 7 adelante
+    if not dias and info.get("temp_c") is None:
         return
     filas = ""
-    for x in pron:
+    for x in dias:
         f = _fecha(x.get("fecha"))
-        dia = "Hoy" if "HOY" in str(x.get("tramo")) else (_dia_corto(f) if f else "")
+        tr = str(x.get("tramo"))
+        pasado = "Histórico" in tr
+        nom = "Hoy" if "HOY" in tr else ((DIAS_SEM[f.weekday()] + f" {f.day}") if f else "")
+        estilo = ' style="opacity:.55"' if pasado else (' style="font-weight:600"' if "HOY" in tr else "")
         lluvia = x.get("precipitacion_mm")
-        filas += (f'<tr><td>{dia}</td><td>{_num(x.get("t_min"), 0)}° / {_num(x.get("t_max"), 0)}°</td>'
-                  f'<td>{_num(lluvia, 0) + " mm" if lluvia else "—"}</td>'
-                  f'<td>{_num(x.get("viento_max_kmh"), 0)} km/h</td>'
-                  f'<td>{_e(x.get("thi_estado") or "")}</td></tr>')
+        filas += (
+            f'<tr{estilo}><td>{nom}</td>'
+            f'<td>{_num(x.get("t_min"), 0)}° / {_num(x.get("t_max"), 0)}°</td>'
+            f'<td>{_num(x.get("hr_media"), 0)} %</td>'
+            f'<td>{(_num(lluvia, 0) + " mm") if lluvia else "—"}</td>'
+            f'<td>{_num(x.get("viento_max_kmh"), 0)} km/h</td>'
+            f'<td>{_cielo(x.get("nubes_pct"))}</td>'
+            f'<td><b>{_num(x.get("thi"), 0)}</b></td>'
+            f'<td>{_e(_sev_corta(x))}</td></tr>')
+    ahora = ""
+    if info.get("temp_c") is not None:
+        ahora = (f'<div class="hm-sub" style="margin-bottom:6px">Ahora: <b>{_num(info["temp_c"], 0)}°</b>, '
+                 f'humedad {_num(info.get("humedad_pct"), 0)} %, THI <b>{_num(info.get("thi"), 0)}</b> '
+                 f'({_e(info.get("thi_estado") or "")})</div>')
     alertas = []
     for al_l in info.get("alertas_lotes") or []:
         for al in al_l.get("alertas") or []:
             if str(al.get("severidad") or "").lower() in ("warning", "critica") and al.get("titulo") not in alertas:
                 alertas.append(al.get("titulo"))
-    ahora = ""
-    if info.get("temp_c") is not None:
-        ahora = (f'<div class="hm-sub" style="margin-bottom:6px">Ahora: <b>{_num(info["temp_c"], 0)}°</b>, '
-                 f'humedad {_num(info.get("humedad_pct"), 0)} %, {_e(info.get("thi_estado") or "")}</div>')
     al_html = "".join(f'<div class="hm-nota">⚠ {_e(a)}</div>' for a in alertas[:3])
     st.markdown(
-        f'<div class="hm"><div class="hm-lbl">CLIMA · {_e(info.get("localidad") or "")}</div>'
-        f'<div class="hm-card">{ahora}<table class="hm-tab"><tr><th>Día</th><th>Mín / máx</th>'
-        f'<th>Lluvia</th><th>Viento</th><th>Estrés</th></tr>{filas}</table>{al_html}</div></div>',
+        f'<div class="hm"><div class="hm-lbl">CLIMA DEL CAMPO · {_e(info.get("localidad") or "")}</div>'
+        f'<div class="hm-card">{ahora}<div style="overflow-x:auto"><table class="hm-tab">'
+        f'<tr><th>Día</th><th>Mín / máx</th><th>Humedad</th><th>Lluvia</th><th>Viento</th>'
+        f'<th>Cielo</th><th>THI</th><th>Estrés real</th></tr>{filas}</table></div>{al_html}'
+        f'<div class="hm-sub" style="margin-top:6px">THI = índice de temperatura y humedad con la máxima del día: '
+        f'72 empieza la atención, 79 moderado, 84 crítico. "Estrés real" lo corrige por viento '
+        f'(el viento alivia el calor), frío sentido con viento y lluvia, y barro. '
+        f'Los 3 primeros días (más claros) son los que ya pasaron: el calor acumulado pesa.</div>'
+        f'</div></div>',
         unsafe_allow_html=True,
     )
-
 
 
 def _icono_dia(x: Dict) -> str:
@@ -1184,40 +1417,84 @@ def _clima_semana(datos: List[Dict]) -> None:
                     f'<div class="hm-card">{tabla}{extra}</div></div>', unsafe_allow_html=True)
 
 
+def _urgencia(d: Dict) -> tuple:
+    """Orden de la tabla: rojo, sin comida en 3 días, amarillo, sin
+    comida en 10 días, sin control, el resto por días de alimento."""
+    dias = (d.get("stock_min") or {}).get("dias_restantes")
+    dias = 9999 if dias is None else dias
+    sem = d.get("sem")
+    if sem == "rojo":
+        g = 0
+    elif dias <= 3:
+        g = 1
+    elif sem == "amarillo":
+        g = 2
+    elif dias <= 10:
+        g = 3
+    else:
+        g = 4
+    return (g, dias)
+
+
+def _hace(f: Optional[date], hoy: date) -> str:
+    if not f:
+        return "nunca"
+    n = (hoy - f).days
+    return "hoy" if n <= 0 else ("ayer" if n == 1 else f"hace {n} días")
+
+
 def _tabla_lotes(datos: List[Dict], on_abrir_lote, kp: str) -> None:
-    """Con muchos lotes: una fila por lote, ordenada por urgencia de
-    alimento. Tocar la fila abre la ficha."""
+    """Una fila por lote con lo necesario para el seguimiento, ordenada
+    por urgencia. Tocar la fila abre la ficha."""
     import pandas as pd
+    hoy = date.today()
+    ico = {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴", "sin": "⚪"}
     filas = []
     for d in datos:
         sm = d.get("stock_min") or {}
-        ctrl = (d.get("control") or {}).get("semaforo_general") or ""
+        dias = sm.get("dias_restantes")
+        if d.get("adpv") is not None:
+            eng = f"{_num(d['adpv'], 2)}" + (f" / {_num(d['adpv_esp'], 2)}" if d.get("adpv_esp") else "")
+            if d.get("engorde_pct") is not None:
+                p = d["engorde_pct"]
+                eng += "  ✓" if p >= 95 else ("  ↓" if p < 85 else "")
+        else:
+            eng = "sin 2 pesadas"
+        if d.get("consumo_pct") is not None:
+            cp = d["consumo_pct"]
+            cons = f"{_num(cp, 0)} %" + ("  ↑ más" if cp > 115 else ("  ↓ menos" if cp < 85 else "  ok"))
+        else:
+            cons = "falta dato"
+        if d.get("salida"):
+            sal = f"{_dm(d['salida'])} ({_num(d['peso_venta'], 0)} kg)"
+        else:
+            sal = "cargar peso de venta" if not d.get("peso_venta") else "falta pesada"
         filas.append({
             "Cliente": d["cliente"],
-            "Lote": d["lote"].get("identificador") or "",
+            "Corral": f"{ico.get(d.get('sem'), '⚪')} {d.get('sem_txt') or ''}",
+            "Alimento (días)": int(round(dias)) if dias is not None else None,
+            "Pedir el": _dm(d["pedir"]) if d.get("pedir") else "—",
+            "Ración": d.get("racion_txt") or "—",
+            "Engorde kg/día (real / esperado)": eng,
+            "Consumo vs ración": cons,
+            "Salida estimada": sal,
+            "Último contacto": _hace(d.get("ult_contacto"), hoy),
+            "Muertes": (f"{d['muertes']} ({_num(d['muertes_pct'], 1)} %)"
+                        if d.get("muertes_pct") is not None else str(d.get("muertes") or 0)),
             "Animales": d.get("animales"),
-            "Día": d.get("dia"),
-            "Últ. peso kg": round(d["peso"]) if d.get("peso") else None,
-            "Ganancia": round(d["adpv"], 2) if d.get("adpv") is not None else None,
-            "Alimento (días)": int(round(sm["dias_restantes"])) if sm.get("dias_restantes") is not None else None,
-            "Producto": sm.get("producto") or "",
-            "Se termina": _dm(_fecha(sm.get("fecha_agotamiento"))) if sm.get("fecha_agotamiento") else "",
-            "Próx. 30 días kg": int(round(float(sm.get("consumo_diario_kg") or 0) * 30)) or None,
-            "Control": {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴"}.get(ctrl.lower(), "⚪"),
+            "Lote": d["lote"].get("identificador") or "",
         })
     df = pd.DataFrame(filas)
-    orden = ["Cliente", "Alimento (días)", "Se termina", "Control", "Ganancia", "Animales",
-             "Día", "Últ. peso kg", "Lote", "Producto", "Próx. 30 días kg"]
-    df = df[[c for c in orden if c in df.columns]]
-    st.caption("Tocá una fila para abrir la ficha del lote. Arriba, los que se quedan antes sin alimento. "
-               "Control: 🟢 bien · 🟡 mirar · 🔴 urgente · ⚪ sin control todavía.")
+    st.caption("Arriba, lo más urgente: corral en rojo, sin comida en 3 días, en amarillo, "
+               "sin comida en 10 días. Tocá una fila para abrir la ficha. "
+               "Engorde ✓ viene bien, ↓ se está quedando. Consumo: lo que realmente comen "
+               "comparado con la ración, calculado con las entregas.")
     ev = st.dataframe(
         df, hide_index=True, width="stretch", on_select="rerun",
         selection_mode="single-row", key=f"{kp}_tabla_lotes",
         column_config={
             "Alimento (días)": st.column_config.ProgressColumn(
                 "Alimento (días)", min_value=0, max_value=30, format="%d"),
-            "Ganancia": st.column_config.NumberColumn("Ganancia kg/d", format="%.2f"),
         },
     )
     try:

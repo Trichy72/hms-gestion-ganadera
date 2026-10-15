@@ -1361,8 +1361,10 @@ def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
     vig_txt = ", ".join(ent.CONTROL_TXT.get(k, k) for k in vig if k != "12")
     n_r = sum(p["nivel"] == "rojo" for p in pts)
     n_a = sum(p["nivel"] == "amarillo" for p in pts)
-    cab = (f'<b>{n_r} rojo{"s" if n_r != 1 else ""}</b> y ' if n_r else "") + \
-          f'{n_a} para mirar · entrevista del {_dm(_fecha(lote.get("entrevista_fecha")))}'
+    cab = ((f'<b>{n_r} rojo{"s" if n_r != 1 else ""}</b>' if n_r else "")
+           + (" y " if n_r and n_a else "") + (f'{n_a} para mirar' if n_a else "")
+           or "Sin puntos débiles en lo contestado") + \
+          f' · entrevista del {_dm(_fecha(lote.get("entrevista_fecha")))}'
     extra = (f'<div class="hm-nota"><b>Control semanal de este lote:</b> {_e(vig_txt)}'
              f' (y jadeo en semanas de calor).</div>')
     if falt:

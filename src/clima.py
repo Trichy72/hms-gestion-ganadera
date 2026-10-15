@@ -293,7 +293,7 @@ def obtener_clima(lat: float, lon: float,
         "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,"
         "precipitation,weather_code,apparent_temperature"
         "&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,"
-        "precipitation,apparent_temperature"
+        "precipitation,apparent_temperature,shortwave_radiation"
         "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,"
         "wind_speed_10m_max,relative_humidity_2m_max,relative_humidity_2m_min,"
         "apparent_temperature_max,apparent_temperature_min,"
@@ -444,24 +444,60 @@ def temp_critica_inferior(categoria: str, mojado: bool = False,
 def calcular_thi(temp_c: float, humedad_rel: float) -> float:
     """Índice de Temperatura-Humedad (THI) para bovinos.
     Fórmula NRC: THI = (1.8 × T + 32) − ((0.55 − 0.0055 × HR) × (1.8 × T − 26))
-    Umbrales para bovinos:
-      <72  - sin estrés
-      72-78 - estrés leve
-      79-88 - estrés moderado
-      >88  - estrés severo
+    Categorías (ver clasificar_thi): alerta 75-78, peligro 79-83,
+    emergencia 84 o más.
     """
     t_f = 1.8 * temp_c + 32
     return t_f - (0.55 - 0.0055 * humedad_rel) * (t_f - 58)
 
 
 def clasificar_thi(thi: float) -> str:
-    if thi < 72:
+    """Categorías del Livestock Weather Hazard Guide para ganado en
+    confinamiento: alerta 75-78, peligro 79-83, emergencia 84 o más
+    (Univ. of Missouri Extension G2099, adaptado de Univ. of Nebraska
+    G07357)."""
+    if thi < 75:
         return "🟢 Sin estrés"
     if thi < 79:
-        return "🟡 Estrés leve"
-    if thi < 89:
-        return "🟠 Estrés moderado"
-    return "🔴 Estrés severo"
+        return "🟡 Alerta"
+    if thi < 84:
+        return "🟠 Peligro"
+    return "🔴 Emergencia"
+
+
+def thi_ajustado_mader(thi: float, viento_ms: float, radiacion_wm2: float) -> float:
+    """THI ajustado por viento y radiación solar (Mader, Davis y
+    Brown-Brandl 2006, J. Anim. Sci. 84:712-719):
+    THI_adj = 4,51 + THI − 1,992 × viento (m/s) + 0,0068 × radiación (W/m²).
+    Pensado para condiciones de la tarde (14 a 17 h) con datos horarios."""
+    return 4.51 + thi - 1.992 * (viento_ms or 0) + 0.0068 * (radiacion_wm2 or 0)
+
+
+def thi_tarde_por_dia(clima: Dict) -> Dict[str, float]:
+    """Por fecha, el THI ajustado (Mader 2006) más alto entre las 14 y las
+    17 h, con los datos horarios del pronóstico."""
+    h = (clima or {}).get("hourly") or {}
+    tiempos = h.get("time") or []
+    t = h.get("temperature_2m") or []
+    hr = h.get("relative_humidity_2m") or []
+    v = h.get("wind_speed_10m") or []
+    rad = h.get("shortwave_radiation") or []
+    out: Dict[str, float] = {}
+    for i, ts in enumerate(tiempos):
+        try:
+            hora = int(str(ts)[11:13])
+        except ValueError:
+            continue
+        if hora < 14 or hora > 17:
+            continue
+        if i >= len(t) or i >= len(hr) or t[i] is None or hr[i] is None:
+            continue
+        thi = calcular_thi(t[i], hr[i])
+        adj = thi_ajustado_mader(thi, (v[i] if i < len(v) and v[i] is not None else 0) / 3.6,
+                                 rad[i] if i < len(rad) and rad[i] is not None else 0)
+        f = str(ts)[:10]
+        out[f] = max(out.get(f, adj), adj)
+    return out
 
 
 # =====================================================================
@@ -477,9 +513,11 @@ def clasificar_thi(thi: float) -> str:
 # Umbrales feedlot 300-450 kg: leve ≥76, moderado ≥81, crítico ≥85.
 # Salida: dict estructurado con tipo_alerta, riesgo, thi_ajustado, acciones.
 
-UMBRAL_THI_LEVE = 76          # Default novillos preventiva (compat)
-UMBRAL_THI_MODERADO = 81
-UMBRAL_THI_CRITICO = 85
+# Corregido (15/10/2026) a las categorías para ganado en confinamiento:
+# alerta 75, peligro 79, emergencia 84 (Missouri Ext. G2099 / Nebraska G07357).
+UMBRAL_THI_LEVE = 75
+UMBRAL_THI_MODERADO = 79
+UMBRAL_THI_CRITICO = 84
 
 # Estaciones (hemisferio sur)
 def estacion_actual() -> str:

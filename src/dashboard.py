@@ -1127,6 +1127,11 @@ def _procesar_clima_clientes(clientes: list) -> dict:
             rad_arr = daily.get("shortwave_radiation_sum") or []
             hoy_iso_d = datetime.now().strftime("%Y-%m-%d")
             pronostico_7d = []
+            try:
+                from .clima import thi_tarde_por_dia
+                _thi_tarde = thi_tarde_por_dia(clima)
+            except Exception:
+                _thi_tarde = {}
             for i, f in enumerate(fechas):
                 # Mostrar TODO el rango (7 pasados + 7 futuros = 14
                 # días) para que se pueda analizar tendencia + ver
@@ -1166,16 +1171,15 @@ def _procesar_clima_clientes(clientes: list) -> dict:
                 _sev = "🟢 Sin estrés"
                 # CALOR: THI ajustado por viento
                 if _thi_d is not None:
-                    _viento_ms = (
-                        (_viento or 0) / 3.6  # km/h → m/s
-                    )
-                    # Mader 2006: THI_adj ≈ THI − 0.5 × viento_ms
-                    _thi_adj = _thi_d - 0.5 * _viento_ms
+                    # THI de la tarde ajustado por viento y sol
+                    # (Mader et al. 2006) con datos horarios; si no hay
+                    # horarios, el THI de la máxima sin ajustar.
+                    _thi_adj = _thi_tarde.get(f, _thi_d)
                     if _thi_adj >= 84:
                         _sev = "🔴 Crítico calor"
                     elif _thi_adj >= 79:
                         _sev = "🟠 Moderado calor"
-                    elif _thi_adj >= 72:
+                    elif _thi_adj >= 75:
                         _sev = "🟡 Atención calor"
                 # FRÍO: T° min nocturna + viento + lluvia + HR alta.
                 # Umbral más amplio (≤ 15°C) porque la sensación
@@ -1258,6 +1262,7 @@ def _procesar_clima_clientes(clientes: list) -> dict:
                     "nubes_pct": _nubes,
                     "radiacion_mj": _rad,
                     "thi": _thi_d,
+                    "thi_ajustado": _thi_tarde.get(f),
                     "thi_estado": _thi_estado_d,
                     "severidad_real": _sev,
                 })

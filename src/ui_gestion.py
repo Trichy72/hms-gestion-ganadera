@@ -241,10 +241,18 @@ def dialog_objetivos(lote_id: int):
         g_esp = st.number_input("Ganancia esperada (kg/día)", min_value=0.0, step=0.05, format="%.2f",
                                 value=float(l.get("adpv_objetivo_kg") or 0),
                                 help="En 0 se usa la ganancia típica de la categoría.")
+        st.caption("Para el frame (BIF): edad y altura a la grupa promedio de 5 a 10 animales, "
+                   "medida sobre los huesos de la cadera, en el brete y sobre piso plano.")
+        c1, c2 = st.columns(2)
+        edad = c1.number_input("Edad (meses)", min_value=0.0, step=1.0,
+                               value=float(l.get("edad_meses") or 0))
+        alt = c2.number_input("Altura a la grupa (cm)", min_value=0.0, step=1.0,
+                              value=float(l.get("altura_grupa_cm") or 0))
         ok = st.form_submit_button("Guardar", type="primary", width="stretch")
     if ok:
         db.actualizar_lote(lote_id, objetivo_peso_kg=(float(p_venta) or None),
-                           adpv_objetivo_kg=(float(g_esp) or None))
+                           adpv_objetivo_kg=(float(g_esp) or None),
+                           edad_meses=(float(edad) or None), altura_grupa_cm=(float(alt) or None))
         st.success("Guardado.")
         _refrescar()
 

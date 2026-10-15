@@ -59,10 +59,12 @@ def evento_del_dia(dia: Dict) -> Optional[Dict]:
     hr, viento = _f(dia.get("hr_media")), _f(dia.get("viento_max_kmh"))
     lluvia = _f(dia.get("precipitacion_mm")) or 0
     if "calor" in sev.lower():
+        adj = _f(dia.get("thi_ajustado"))
         motivo = (f"máxima {_n(tmax)} °C con humedad {_n(hr)} % "
-                  f"(THI {_n(_f(dia.get('thi')))})")
+                  + (f"(THI de la tarde {_n(adj)}, corregido por viento y sol)" if adj is not None
+                     else f"(THI {_n(_f(dia.get('thi')))})"))
         return {"tipo": "calor", "nivel": nivel, "motivo": motivo,
-                "tmax": tmax, "hr": hr}
+                "tmax": tmax, "hr": hr, "dia": dia}
     sent = sensacion_frio(tmin, viento, lluvia)
     partes = [f"mínima {_n(tmin)} °C", f"viento {_n(viento)} km/h"]
     if lluvia >= 1:
@@ -96,7 +98,7 @@ def _resp(control: Optional[Dict], k: str) -> str:
 
 def recomendaciones(evento: Dict, tipo_comedero: str = "",
                     inst: Optional[Dict] = None, control: Optional[Dict] = None,
-                    animales=None, peso_kg=None) -> List[str]:
+                    animales=None, peso_kg=None, ms_kg=None) -> List[str]:
     """Qué hacer, en orden de importancia, según el evento, el comedero,
     las instalaciones del corral y el último control del productor.
     Puede subir el nivel del evento (lo deja en evento['nivel'])."""
@@ -151,16 +153,18 @@ def recomendaciones(evento: Dict, tipo_comedero: str = "",
         critico = evento["nivel"] == "critico"
         if agua_ctrl:
             out.append("En el último control faltó agua: revisar bomba, caudal y flotantes ANTES del calor")
-        ag = agua_lote(animales, peso_kg, evento.get("tmax"), inst.get("reserva_agua_l"))
+        ag = agua_lote(animales, peso_kg, evento.get("tmax"), inst.get("reserva_agua_l"),
+                       ms_kg, evento.get("dia"))
         txt_ag = ""
         if ag:
             txt_ag = (f" Con {_n(evento.get('tmax'))} °C el lote toma unos {_n(ag['l_dia'])} L/día "
-                      f"({_n(ag['l_animal'])} L por animal)")
+                      f"({_n(ag['l_animal'])} L por animal, {ag['metodo']})")
             if ag.get("horas_reserva") is not None:
                 txt_ag += f"; la reserva alcanza para {_n(ag['horas_reserva'])} horas si se corta la bomba"
         out.append("Agua: bebederos limpios, con caudal y espacio para todos"
                    + (" (son pocos: sumar un tanque o bebedero)" if beb == "pocos" else "")
-                   + ("." + txt_ag if txt_ag else ""))
+                   + ("." + txt_ag if txt_ag else "")
+                   + ". El INTA pide asegurar al menos 70 L por animal por día en verano")
         if sombra == "no":
             out.append("No tiene sombra: si se puede, media sombra provisoria")
         if silo:
@@ -236,14 +240,61 @@ def agua_litros_animal(peso_kg, temp_c) -> Optional[float]:
     return _interp(p, pesos, por_peso)
 
 
-def agua_lote(animales, peso_kg, temp_c, reserva_l=None) -> Optional[Dict]:
-    """Litros por día del lote y cuántas horas aguanta la reserva."""
-    la = agua_litros_animal(peso_kg, temp_c)
+# Ahlberg y otros 2018, J. Anim. Sci. 96:4368-4384, tabla 5: consumo de
+# agua (kg/d) = a + b·MS consumida (kg) + c·PV^0,75 + d·T media (°C)
+# + e·HR media (%) + f·viento (km/h) + g·radiación (MJ/m²).
+_AHLBERG = {
+    "verano":   (-9.74, 2.32, 0.11, 1.31, -0.17, -0.27, -0.03),
+    "invierno": (-4.24, 1.76, 0.22, 0.26, -0.09, -0.06, 0.13),
+    "general":  (-4.18, 2.00, 0.22, 0.57, -0.15, -0.16, 0.14),
+}
+
+
+def _temporada(fecha) -> str:
+    """Hemisferio sur: verano dic-feb, invierno jun-ago."""
+    try:
+        m = fecha.month if hasattr(fecha, "month") else int(str(fecha)[5:7])
+    except Exception:
+        return "general"
+    if m in (12, 1, 2):
+        return "verano"
+    if m in (6, 7, 8):
+        return "invierno"
+    return "general"
+
+
+def agua_ahlberg(peso_kg, ms_kg, dia: Dict) -> Optional[float]:
+    """Litros por animal por día con la ecuación de Ahlberg 2018. Necesita
+    la materia seca consumida; sin ese dato devuelve None (no se supone)."""
+    p, ms = _f(peso_kg), _f(ms_kg)
+    tmin, tmax = _f(dia.get("t_min")), _f(dia.get("t_max"))
+    if not p or not ms or tmin is None or tmax is None:
+        return None
+    a, b, c, d, e, f, g = _AHLBERG[_temporada(dia.get("fecha"))]
+    hr = _f(dia.get("hr_media")) or 0
+    viento = _f(dia.get("viento_max_kmh")) or 0     # el pronóstico da el máximo del día
+    rad = _f(dia.get("radiacion_mj")) or 0
+    v = a + b * ms + c * p ** 0.75 + d * (tmin + tmax) / 2 + e * hr + f * viento + g * rad
+    return max(v, 0.0)
+
+
+def agua_lote(animales, peso_kg, temp_c, reserva_l=None, ms_kg=None,
+              dia: Optional[Dict] = None) -> Optional[Dict]:
+    """Litros por día del lote y cuántas horas aguanta la reserva. Usa
+    Ahlberg 2018 si se sabe la materia seca consumida; si no, la tabla
+    del NRC 1996 (Winchester y Morris)."""
+    la, metodo = None, ""
+    if dia is not None and ms_kg:
+        la = agua_ahlberg(peso_kg, ms_kg, dia)
+        metodo = "Ahlberg 2018"
+    if la is None:
+        la = agua_litros_animal(peso_kg, temp_c)
+        metodo = "tabla NRC 1996"
     n = _f(animales)
     if la is None or not n:
         return None
     total = la * n
-    out = {"l_animal": la, "l_dia": total}
+    out = {"l_animal": la, "l_dia": total, "metodo": metodo}
     r = _f(reserva_l)
     if r and total > 0:
         out["horas_reserva"] = r / (total / 24)

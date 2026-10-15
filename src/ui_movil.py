@@ -200,6 +200,16 @@ _AREAS_TXT = (("sanidad", "sanidad"), ("consumo", "consumo"),
               ("ambiente", "ambiente"), ("alimento", "alimento"))
 
 
+def _ms_animal(d: Dict) -> Optional[float]:
+    """Materia seca consumida por animal según la ración cargada; None si
+    la ración no tiene materia seca (no se supone)."""
+    for x in d.get("stock") or []:
+        v = (x.get("consumo_info") or {}).get("dmi_kg_animal")
+        if v:
+            return float(v)
+    return None
+
+
 def _seguimiento(d: Dict, hoy: date) -> None:
     """Datos para la tabla de seguimiento: ración, engorde contra lo
     esperado, consumo real, salida estimada, último contacto, muertes."""
@@ -473,7 +483,8 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                                               f"el {_dia_corto(f).lower()}/{f.month}")
             recos = cr.recomendaciones(ev, d["lote"].get("tipo_comedero_concentrado") or "",
                                        d["lote"], d.get("control"),
-                                       d.get("animales"), d.get("peso_hoy") or d.get("peso"))
+                                       d.get("animales"), d.get("peso_hoy") or d.get("peso"),
+                                       _ms_animal(d))
             nombre = ("frío" if ev["tipo"] == "frio" else "calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
             mas = f" (y {len(evs) - 1} día{'s' if len(evs) > 2 else ''} más)" if len(evs) > 1 else ""
             tareas.append((
@@ -1195,6 +1206,23 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
             filas.append(("Salida estimada", f"peso de venta {_num(d['peso_venta'], 0)} kg; falta una pesada"))
     else:
         filas.append(("Salida estimada", "cargá el peso de venta con el botón de abajo"))
+    try:
+        from .frame import evaluar_frame
+        fr = evaluar_frame(lote.get("altura_grupa_cm"), lote.get("edad_meses"), lote.get("categoria") or "")
+    except Exception:
+        fr = None
+    if fr:
+        txt = f"<b>{_num(fr['frame'], 1)}</b> (BIF)"
+        if fr["peso_faena"]:
+            txt += (f" → peso de faena {fr['peso_faena'][0]}-{fr['peso_faena'][1]} kg para "
+                    f"{fr['destino']} (INTA)")
+        else:
+            txt += " → por debajo de frame 4 el INTA no da rango de peso"
+        if fr["fuera_rango"]:
+            txt += ". Ojo: la fórmula es para 5 a 21 meses"
+        filas.append(("Frame", txt))
+    else:
+        filas.append(("Frame", "cargá edad y altura a la grupa en Objetivos"))
     if d.get("consumo_pct") is not None:
         cp = d["consumo_pct"]
         nota = ("comen más de lo que dice la ración" if cp > 115 else
@@ -1219,7 +1247,7 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
                 f'{_e(" · ".join(inst)) if inst else "sin cargar (reparo, sombra, piso, bebederos)"}'
                 f'</div></div>', unsafe_allow_html=True)
     b1, b2 = st.columns(2)
-    if b1.button("🎯 Objetivos (peso de venta, ganancia)", key=f"{kp}_obj_{d['id']}", width="stretch"):
+    if b1.button("🎯 Objetivos (peso de venta, ganancia, frame)", key=f"{kp}_obj_{d['id']}", width="stretch"):
         _g.dialog_objetivos(d["id"])
     if b2.button("🏠 Corral (reparo, sombra, piso, agua)", key=f"{kp}_inst_{d['id']}", width="stretch"):
         _g.dialog_instalaciones(d["id"])
@@ -1562,7 +1590,8 @@ def _seccion_clima(lote: Dict) -> None:
             f'<td>{(_num(lluvia, 0) + " mm") if lluvia else "—"}</td>'
             f'<td>{_num(x.get("viento_max_kmh"), 0)} km/h</td>'
             f'<td>{_cielo(x.get("nubes_pct"))}</td>'
-            f'<td><b>{_num(x.get("thi"), 0)}</b></td>'
+            f'<td>{_num(x.get("thi"), 0)}</td>'
+            f'<td><b>{_num(x.get("thi_ajustado"), 0) if x.get("thi_ajustado") is not None else "—"}</b></td>'
             f'<td>{_e(_sev_corta(x))}</td></tr>')
     ahora = ""
     if info.get("temp_c") is not None:
@@ -1585,7 +1614,8 @@ def _seccion_clima(lote: Dict) -> None:
                          (lote["id"],)) or [None])[0]
             dd = datos_lote(lote)
             recos = cr.recomendaciones(ev, lote.get("tipo_comedero_concentrado") or "", lote, ctrl,
-                                       dd.get("animales"), dd.get("peso_hoy") or dd.get("peso"))
+                                       dd.get("animales"), dd.get("peso_hoy") or dd.get("peso"),
+                                       _ms_animal(dd))
             nombre = ("Frío" if ev["tipo"] == "frio" else "Calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
             if ev.get("notas"):
                 nombre += f" ({'; '.join(ev['notas'])})"
@@ -1604,8 +1634,9 @@ def _seccion_clima(lote: Dict) -> None:
         futuros = [x for x in dias if "Histórico" not in str(x.get("tramo"))]
         hoy_x = next((x for x in futuros if "HOY" in str(x.get("tramo"))), futuros[0] if futuros else None)
         peor = max(futuros, key=lambda x: x.get("t_max") or -99) if futuros else None
-        ag_h = cr.agua_lote(dd.get("animales"), peso, (hoy_x or {}).get("t_max"), lote.get("reserva_agua_l"))
-        ag_p = cr.agua_lote(dd.get("animales"), peso, (peor or {}).get("t_max"), lote.get("reserva_agua_l"))
+        ms = _ms_animal(dd)
+        ag_h = cr.agua_lote(dd.get("animales"), peso, (hoy_x or {}).get("t_max"), lote.get("reserva_agua_l"), ms, hoy_x)
+        ag_p = cr.agua_lote(dd.get("animales"), peso, (peor or {}).get("t_max"), lote.get("reserva_agua_l"), ms, peor)
         if ag_h and ag_p:
             fp = _fecha(peor.get("fecha"))
             agua_html = (f'<div class="hm-sub" style="margin:6px 0">💧 Agua: hoy unos <b>{_num(ag_h["l_dia"], 0)} L</b> '
@@ -1615,6 +1646,9 @@ def _seccion_clima(lote: Dict) -> None:
                          + (f' La reserva de {_num(lote.get("reserva_agua_l"), 0)} L alcanza para '
                             f'{_num(ag_p["horas_reserva"], 0)} horas ese día.' if ag_p.get("horas_reserva") else
                             ' Sin dato de tanque de reserva (cargalo en Corral).')
+                         + f' <span style="opacity:.75">Cálculo: {ag_h["metodo"]}'
+                         + ('' if ms else ' (la ración no tiene materia seca cargada; con ese dato se usa Ahlberg 2018)')
+                         + '. Para dimensionar bomba y tanque, el INTA pide 70 L por animal por día en verano.</span>'
                          + '</div>')
     except Exception as e:
         log.info("ui_movil: agua: %s", e)
@@ -1622,10 +1656,11 @@ def _seccion_clima(lote: Dict) -> None:
         f'<div class="hm"><div class="hm-lbl">CLIMA DEL CAMPO · {_e(info.get("localidad") or "")}</div>'
         f'<div class="hm-card">{ahora}{agua_html}<div style="overflow-x:auto"><table class="hm-tab">'
         f'<tr><th>Día</th><th>Mín / máx</th><th>Humedad</th><th>Lluvia</th><th>Viento</th>'
-        f'<th>Cielo</th><th>THI</th><th>Estrés real</th></tr>{filas}</table></div>{al_html}'
-        f'<div class="hm-sub" style="margin-top:6px">THI = índice de temperatura y humedad con la máxima del día: '
-        f'72 empieza la atención, 79 moderado, 84 crítico. "Estrés real" lo corrige por viento '
-        f'(el viento alivia el calor), frío sentido con viento y lluvia, y barro. '
+        f'<th>Cielo</th><th>THI máx.</th><th>THI tarde</th><th>Estrés real</th></tr>{filas}</table></div>{al_html}'
+        f'<div class="hm-sub" style="margin-top:6px">THI máx. = índice de temperatura y humedad con la máxima del día. '
+        f'THI tarde = el peor entre las 14 y las 17 h, corregido por viento (alivia) y sol (agrava) según Mader y otros 2006. '
+        f'Con ese se clasifica el calor: 75 alerta, 79 peligro, 84 emergencia (guía de Missouri/Nebraska para ganado en confinamiento). '
+        f'El frío usa una aproximación propia (viento y mojado) todavía sin fuente publicada. '
         f'Los 3 primeros días (más claros) son los que ya pasaron: el calor acumulado pesa.</div>'
         f'</div></div>',
         unsafe_allow_html=True,
@@ -1635,12 +1670,12 @@ def _seccion_clima(lote: Dict) -> None:
 def _icono_dia(x: Dict) -> str:
     lluvia = float(x.get("precipitacion_mm") or 0)
     tmax = x.get("t_max")
-    thi = str(x.get("thi_estado") or "")
+    thi = str(x.get("severidad_real") or "")
     if lluvia >= 10:
         return "🌧"
     if lluvia >= 1:
         return "🌦"
-    if tmax is not None and float(tmax) >= 32 or "estrés" in thi.lower() and "sin" not in thi.lower():
+    if tmax is not None and float(tmax) >= 32 or "calor" in thi.lower():
         return "🔥"
     if tmax is not None and float(tmax) <= 8:
         return "🥶"

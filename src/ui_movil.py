@@ -346,6 +346,16 @@ _CSS = f"""
 .hm-tile .n {{ font-size: 11px; color: var(--hm-sub); letter-spacing: .6px; }}
 .hm-tile .f {{ font-size: 11px; color: var(--hm-sub); margin-top: 2px; }}
 .hm-hero .hm-kgrid {{ margin-top: 6px; }}
+.hm-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
+.hm-cal th {{ font-size: 11px; color: var(--hm-sub); font-weight: 600; text-align: left; padding: 4px 6px; }}
+.hm-cal td {{ vertical-align: top; height: 92px; border: 1px solid var(--hm-line); padding: 4px 6px; overflow: hidden; }}
+.hm-cal .hm-cal-n {{ font-size: 12px; font-weight: 700; color: var(--hm-sub); }}
+.hm-cal td.hm-cal-hoy {{ background: var(--hm-soft); }}
+.hm-cal td.hm-cal-hoy .hm-cal-n {{ color: var(--hm-acc); }}
+.hm-cal td.hm-cal-fuera {{ opacity: .35; }}
+.hm-cal-ev {{ font-size: 11.5px; line-height: 1.25; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--hm-txt); }}
+.hm-cal-lista {{ display: none; }}
+@media (max-width: 700px) {{ .hm-cal {{ display: none; }} .hm-cal-lista {{ display: block; }} }}
 .hm-semi {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }}
 .hm-semi .sc {{ border-radius: 14px; padding: 12px 14px; border: 1px solid var(--hm-line); background: var(--hm-card); }}
 .hm-semi .sk {{ display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--hm-sub); }}
@@ -553,44 +563,15 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                         unsafe_allow_html=True)
 
     with col_b:
-        ag = []
-        for d in datos:
-            sm = d.get("stock_min")
-            fa = _fecha((sm or {}).get("fecha_agotamiento"))
-            # Lo que ya está en "Para hoy" no se repite en la agenda
-            ya_hoy = sm and sm.get("dias_restantes") is not None and sm["dias_restantes"] <= 10
-            if fa and not ya_hoy:
-                ag.append((fa - timedelta(days=2), f"Pedido de {sm['producto']} · {d['cliente']}"))
-            if d.get("fecha_peso"):
-                ag.append((d["fecha_peso"] + timedelta(days=15), f"Seguimiento de 15 días · {d['cliente']}"))
-            pp = d.get("proxima_pesada")
-            if pp and (pp - hoy).days > 3:
-                ag.append((pp, f"Pesada mensual · {d['cliente']}"))
-        ag = sorted([a for a in ag if hoy <= a[0] <= hoy + timedelta(days=14)])
-        # Agrupar la misma tarea del mismo día: "Pesada mensual · A, B, C"
-        agr: Dict = {}
-        for f_, t_ in ag:
-            tarea, _, cli = t_.rpartition(" · ")
-            agr.setdefault((f_, tarea), []).append(cli)
-        ag = [(f_, tarea, clis) for (f_, tarea), clis in sorted(agr.items())]
-        mas_ag = max(0, len(ag) - 7)
-        ag = ag[:7]
-        h = '<div class="hm"><div class="hm-lbl">AGENDA · LO QUE VIENE (2 SEMANAS)</div><div class="hm-card">'
-        if ag:
-            for f, tarea, clis in ag:
-                h += (f'<div class="hm-ag"><div class="d">{_dia_corto(f)}/{f.month}</div>'
-                      f'<div><b>{_e(", ".join(clis[:4]))}</b>'
-                      + (f' y {len(clis) - 4} más' if len(clis) > 4 else '')
-                      + f' · {_e(tarea)}</div></div>')
-            if mas_ag:
-                h += f'<div class="hm-sub" style="padding-top:8px">… y {mas_ag} más en estas dos semanas</div>'
-        else:
-            h += '<div class="hm-sub">Sin tareas en las próximas dos semanas.</div>'
-        st.markdown(h + "</div></div>", unsafe_allow_html=True)
         try:
             _clima_catrilo()
         except Exception as e:
             log.info("ui_movil: clima semana: %s", e)
+
+    try:
+        _calendario(datos, hoy, kp)
+    except Exception as e:
+        log.info("ui_movil: calendario: %s", e)
 
     # Una fila por cliente/lote: todo lo de cada uno junto, con su nombre.
     st.markdown('<div class="hm"><div class="hm-lbl">CLIENTES EN SEGUIMIENTO · '
@@ -641,6 +622,140 @@ def _semaforos_inicio(datos: List[Dict], hoy: date) -> None:
               f'<div class="sk"><span class="sd" style="background:{col}"></span>{tit}</div>'
               f'<div class="sv">{len(xs)}</div><div class="sw">{_e(txt)}</div></div>')
     st.markdown(h + "</div></div>", unsafe_allow_html=True)
+
+
+# Tipos de actividad del calendario: (ícono, color, nombre)
+_CAL_TIPOS = {
+    "pedido":   ("🛒", "#B4610E", "Pedir alimento"),
+    "racion":   ("🔄", "#2C5E9E", "Cambio de ración"),
+    "pesada":   ("⚖", "#6A3FA0", "Pesada"),
+    "seguim":   ("📞", "#5F6B66", "Seguimiento 15 días"),
+    "entrega":  ("🚚", "#2E7D32", "Entrega"),
+    "control":  ("📋", "#2E7D32", "Control respondido"),
+    "salida":   ("🏁", "#1B4332", "Salida estimada"),
+    "clima":    ("🌡", "#C62828", "Clima"),
+}
+
+
+def _eventos_mes(datos: List[Dict], y: int, m: int, hoy: date) -> Dict[date, List[tuple]]:
+    """Actividades del mes: lo que ya pasó (entregas, pesadas, controles)
+    y lo que viene (pedidos, cambios de ración, pesadas, salidas, clima)."""
+    import calendar as _cal
+    ini = date(y, m, 1)
+    fin = date(y, m, _cal.monthrange(y, m)[1])
+    ev: Dict[date, List[tuple]] = {}
+
+    def add(f, tipo, txt):
+        if f and ini <= f <= fin:
+            ev.setdefault(f, []).append((tipo, txt))
+
+    for d in datos:
+        cli = d["cliente"]
+        lid = d["id"]
+        # Pasado
+        for p in d.get("pesadas") or []:
+            add(_fecha(p.get("fecha")), "pesada", f"{cli} · pesada {_num(p.get('peso_promedio_kg'), 0)} kg")
+        for e in _sql("SELECT fecha_entrega, kg_total FROM entregas_producto WHERE lote_id = ? "
+                      "AND fecha_entrega >= ? AND fecha_entrega <= ?", (lid, ini.isoformat(), fin.isoformat())):
+            add(_fecha(e.get("fecha_entrega")), "entrega", f"{cli} · {_num(e.get('kg_total'), 0)} kg")
+        for c in _sql("SELECT COALESCE(fecha_respuesta, fecha_envio) AS f, semaforo_general AS g "
+                      "FROM controles_semanales WHERE lote_id = ?", (lid,)):
+            add(_fecha(c.get("f")), "control", f"{cli} · control {c.get('g') or ''}".strip())
+        for r in _sql("SELECT fecha FROM dietas WHERE lote_id = ? AND fecha >= ? AND fecha <= ?",
+                      (lid, ini.isoformat(), fin.isoformat())):
+            add(_fecha(r.get("fecha")), "racion", f"{cli} · cambio de ración")
+        # Lo que viene
+        if d.get("pedir") and d["pedir"] >= hoy:
+            add(d["pedir"], "pedido", f"{cli} · {(d.get('stock_min') or {}).get('producto') or 'alimento'}")
+        elif d.get("pedir") and d["pedir"] < hoy:
+            add(hoy, "pedido", f"{cli} · pedir ya")
+        pp = d.get("proxima_pesada")
+        if pp and pp >= hoy:
+            add(pp, "pesada", f"{cli} · pesada mensual")
+        if d.get("fecha_peso"):
+            f15 = d["fecha_peso"] + timedelta(days=15)
+            if f15 >= hoy:
+                add(f15, "seguim", f"{cli} · seguimiento")
+        if d.get("salida"):
+            add(d["salida"], "salida", f"{cli} · salida ({_num(d.get('peso_venta'), 0)} kg)")
+
+    # Clima de la zona (Catriló): días con estrés moderado o crítico
+    try:
+        info = _clima_localidad("Catriló, La Pampa")
+        for x in info.get("pronostico_7d") or []:
+            sev = str(x.get("severidad_real") or "")
+            f = _fecha(x.get("fecha"))
+            if f and f >= hoy and sev[:1] in ("🔴", "🟠"):
+                add(f, "clima", sev[1:].strip())
+    except Exception:
+        pass
+    return ev
+
+
+def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
+    import calendar as _cal
+    key = f"{kp}_cal_mes"
+    off = st.session_state.get(key, 0)
+    y, m = hoy.year, hoy.month + off
+    while m < 1:
+        m += 12; y -= 1
+    while m > 12:
+        m -= 12; y += 1
+    nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
+               "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+    c1, c2, c3, c4 = st.columns([3, 1, 1, 1], vertical_alignment="center")
+    c1.markdown(f'<div class="hm"><div class="hm-lbl" style="margin:0">CALENDARIO · '
+                f'{nombres[m - 1].upper()} {y}</div></div>', unsafe_allow_html=True)
+    if c2.button("◀ Anterior", key=f"{key}_a", width="stretch"):
+        st.session_state[key] = off - 1
+        st.rerun()
+    if c3.button("Hoy", key=f"{key}_h", width="stretch", disabled=off == 0):
+        st.session_state[key] = 0
+        st.rerun()
+    if c4.button("Siguiente ▶", key=f"{key}_s", width="stretch"):
+        st.session_state[key] = off + 1
+        st.rerun()
+
+    ev = _eventos_mes(datos, y, m, hoy)
+
+    # Grilla (compu) y lista (celular)
+    sem = _cal.Calendar(firstweekday=0).monthdatescalendar(y, m)
+    cab = "".join(f"<th>{x}</th>" for x in DIAS_SEM)
+    filas = ""
+    for semana in sem:
+        filas += "<tr>"
+        for dia in semana:
+            fuera = dia.month != m
+            cls = "hm-cal-fuera" if fuera else ("hm-cal-hoy" if dia == hoy else "")
+            chips = ""
+            evs = ev.get(dia, []) if not fuera else []
+            for tipo, txt in evs[:3]:
+                ico, col, _ = _CAL_TIPOS[tipo]
+                pasado = ' style="opacity:.6"' if dia < hoy else ""
+                chips += (f'<div class="hm-cal-ev"{pasado}><span style="color:{col}">{ico}</span> '
+                          f'{_e(txt)}</div>')
+            if len(evs) > 3:
+                chips += f'<div class="hm-sub">+{len(evs) - 3} más</div>'
+            filas += f'<td class="{cls}"><div class="hm-cal-n">{dia.day}</div>{chips}</td>'
+        filas += "</tr>"
+    lista = ""
+    for dia in sorted(ev):
+        if dia < hoy and m == hoy.month and y == hoy.year:
+            continue
+        for tipo, txt in ev[dia]:
+            ico, col, _ = _CAL_TIPOS[tipo]
+            lista += (f'<div class="hm-ag"><div class="d">{_dia_corto(dia)}/{dia.month}</div>'
+                      f'<div><span style="color:{col}">{ico}</span> {_e(txt)}</div></div>')
+    if not lista:
+        lista = '<div class="hm-sub">Sin actividades.</div>'
+    ley = " · ".join(f'<span style="color:{c}">{i}</span> {n}' for i, c, n in _CAL_TIPOS.values())
+    st.markdown(
+        f'<div class="hm"><div class="hm-card">'
+        f'<table class="hm-cal"><tr>{cab}</tr>{filas}</table>'
+        f'<div class="hm-cal-lista">{lista}</div>'
+        f'<div class="hm-sub" style="margin-top:8px">{ley}</div></div></div>',
+        unsafe_allow_html=True)
 
 
 def _precio_kg(e: Dict) -> Optional[float]:

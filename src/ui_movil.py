@@ -1131,10 +1131,22 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
             areas = [("Sanidad", "semaforo_sanidad"), ("Consumo", "semaforo_consumo"),
                      ("Ambiente", "semaforo_ambiente"), ("Alimento", "semaforo_alimento")]
             sem = ""
+            _ico_ctrl = {"Sanidad": "sanidad", "Consumo": "comedero", "Ambiente": "corral", "Alimento": "alimento"}
+            _txt_ctrl = {"verde": ("#2E9E57", "bien"), "amarillo": ("#F2C200", "para mirar"),
+                         "rojo": ("#D92D20", "urgente")}
             for nom, campo in areas:
                 est = ((ctrl or {}).get(campo) or "gris").lower()
-                fg, bg = ESTADO_COLOR.get(est, ESTADO_COLOR["gris"])
-                sem += f'<div><div class="c" style="background:{bg};border:2px solid {fg}"></div><div class="hm-sub">{nom}</div></div>'
+                col, leyenda = _txt_ctrl.get(est, ("#B8B8B8", "sin datos"))
+                ico = (_SVG + _ICON_SIT[_ico_ctrl[nom]] + "</svg>").replace(
+                    'width="26" height="26"', 'width="58%" height="58%"')
+                sem += (f'<div style="border:1px solid var(--hm-line,#e5e5e5);border-radius:12px;padding:10px 2px">'
+                        f'<div style="width:clamp(34px,9vw,46px);height:clamp(34px,9vw,46px);border-radius:50%;'
+                        f'background:var(--hm-soft);color:var(--hm-est);display:flex;align-items:center;'
+                        f'justify-content:center;margin:0 auto">{ico}</div>'
+                        f'<div style="font-size:clamp(10px,2.7vw,13px);font-weight:600;margin:4px 0 6px">{nom}</div>'
+                        f'<div style="width:16px;height:16px;border-radius:50%;background:{col};margin:0 auto 4px;'
+                        f'box-shadow:0 0 0 3px {col}33"></div>'
+                        f'<div class="hm-sub" style="font-size:clamp(9px,2.5vw,12px)">{leyenda}</div></div>')
             f_c = _fecha((ctrl or {}).get("fecha_respuesta") or (ctrl or {}).get("fecha_envio"))
             cab = f"respondido el {_dm(f_c)}" if ctrl else "pendiente"
             txt = (_e(ctrl.get("comentarios")) if ctrl and ctrl.get("comentarios")
@@ -1285,6 +1297,7 @@ _ICON_SIT = {
     'comedero': '<path d="M3 10h18l-2.2 7.5a1.5 1.5 0 0 1-1.4 1H6.6a1.5 1.5 0 0 1-1.4-1z"/><path d="M7 7.5c1.2-1.6 2.6-1.6 3.8 0M13.2 7.5c1.2-1.6 2.6-1.6 3.8 0"/><path d="M6 18.5V21M18 18.5V21"/>',
     'agua': '<path d="M12 3.5c3.2 3.8 6 7.2 6 10.3a6 6 0 0 1-12 0c0-3.1 2.8-6.5 6-10.3z"/><path d="M9.2 14.5a2.9 2.9 0 0 0 2.8 2.6"/>',
     'corral': '<path d="M3 11l9-6.5 9 6.5"/><path d="M5 9.7V20h14V9.7"/><path d="M9.5 20v-5h5v5"/><path d="M9.5 15l5 5M14.5 15l-5 5"/>',
+    'alimento': '<path d="M8 4.5h8l-1.2 2.5c2.7 1.7 4.2 4.6 4.2 7.8 0 3.4-2.4 5.7-7 5.7s-7-2.3-7-5.7c0-3.2 1.5-6.1 4.2-7.8z"/><path d="M9.3 7h5.4"/><path d="M9.5 13.5h5M10.5 16.5h3"/>',
     'manejo': '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M8.5 11l1.6 1.6 3-3"/><path d="M8.5 16.5h7"/>',
 }
 _GRUPOS_SIT = [

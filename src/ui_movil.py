@@ -1327,21 +1327,24 @@ def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
         n_r = sum(p["nivel"] == "rojo" for p in ps)
         n_a = len(ps) - n_r
         if n_r:
-            col, txt = "#D92D20", f'{n_r} rojo{"s" if n_r != 1 else ""}' + (f" · {n_a} a mirar" if n_a else "")
+            col, txt = "#D92D20", f'{n_r} rojo{"s" if n_r != 1 else ""}' + (f"<br>{n_a} a mirar" if n_a else "")
         elif n_a:
             col, txt = "#F2C200", f'{n_a} para mirar'
         elif contestado:
             col, txt = "#2E9E57", "bien"
         else:
             col, txt = "#B8B8B8", "sin datos"
-        tiles.append(f'<div style="border:1px solid var(--hm-line,#e5e5e5);border-radius:12px;padding:10px 6px;'
+        ico_tile = ico.replace('width="26" height="26"', 'width="58%" height="58%"')
+        tiles.append(f'<div style="border:1px solid var(--hm-line,#e5e5e5);border-radius:12px;padding:10px 2px;'
                      f'text-align:center;background:var(--hm-card-bg,transparent)">'
-                     f'<div style="width:46px;height:46px;border-radius:50%;background:var(--hm-soft);color:var(--hm-est);'
-                     f'display:flex;align-items:center;justify-content:center;margin:0 auto">{ico}</div>'
-                     f'<div style="font-size:13px;font-weight:600;margin:4px 0 6px">{nombre}</div>'
-                     f'<div style="width:18px;height:18px;border-radius:50%;background:{col};margin:0 auto 4px;'
+                     f'<div style="width:clamp(34px,9vw,46px);height:clamp(34px,9vw,46px);border-radius:50%;background:var(--hm-soft);color:var(--hm-est);'
+                     f'display:flex;align-items:center;justify-content:center;margin:0 auto">'
+                     f'{ico_tile}</div>'
+                     f'<div style="font-size:clamp(9px,2.6vw,13px);font-weight:600;margin:4px 0 6px;'
+                     f'hyphens:auto;-webkit-hyphens:auto;line-height:1.2" lang="es">{nombre.replace("Instalaciones", "Instala&shy;ciones")}</div>'
+                     f'<div style="width:16px;height:16px;border-radius:50%;background:{col};margin:0 auto 4px;'
                      f'box-shadow:0 0 0 3px {col}33"></div>'
-                     f'<div class="hm-sub" style="font-size:12px">{txt}</div></div>')
+                     f'<div class="hm-sub" style="font-size:clamp(9px,2.5vw,12px);line-height:1.2">{txt}</div></div>')
         if ps:
             items = []
             for p in ps:
@@ -1355,8 +1358,8 @@ def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
             filas.append(f'<div style="margin-top:10px"><b style="display:inline-flex;align-items:center;gap:6px">'
                          f'<span style="color:var(--hm-est);display:inline-flex">{ico_chico}</span>{nombre}</b>'
                          f'{"".join(items)}</div>')
-    filas.insert(0, '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));'
-                    f'gap:8px;margin:6px 0 2px">{"".join(tiles)}</div>')
+    filas.insert(0, '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));'
+                    f'gap:clamp(4px,1.2vw,8px);margin:6px 0 2px">{"".join(tiles)}</div>')
     vig = ent.preguntas_semanales(pts)
     vig_txt = ", ".join(ent.CONTROL_TXT.get(k, k) for k in vig if k != "12")
     n_r = sum(p["nivel"] == "rojo" for p in pts)

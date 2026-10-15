@@ -50,7 +50,7 @@ BLOQUES = [
         ("A9", "Horas de viaje hasta el corral", "num", None,
          "Viaje largo = más cuidado en la recepción"),
         ("A10", "De dónde vienen comiendo (puede ser más de uno)", "multi",
-         ["Pasto", "Verdeo", "Rastrojo", "Grano", NS],
+         ["Pasto", "Verdeo", "Rastrojo", "Rollo", "Silo de planta entera", "Grano", NS],
          "Cuánto dura la adaptación al grano"),
     ]),
     ("B", "Sanidad al ingreso", [
@@ -76,8 +76,13 @@ BLOQUES = [
         ("C5", "Silo comedero: ¿se adapta antes en comedero lineal?", "op",
          ["Sí, en comedero lineal", "No, va directo al silo", NS], "INTA: 20 a 30 días"),
         ("C5b", "Días de adaptación en comedero lineal", "num", None, "INTA: 20 a 30 días"),
-        ("C6", "Ingredientes que tiene", "multi", ["Maíz entero", "Maíz partido", "Silo de maíz o sorgo",
-                                                   "Rollo", "Pellet", "Núcleo", "Otros"],
+        ("C6", "Ingredientes que tiene", "multi", ["Maíz entero", "Maíz partido",
+                                                   "Silo de planta entera de maíz",
+                                                   "Silo de planta entera de sorgo",
+                                                   "Silo de otra especie",
+                                                   "Rollo de alfalfa", "Rollo de avena",
+                                                   "Rollo de otro material",
+                                                   "Pellet", "Núcleo", "Otros"],
          "Armar la ración con lo que hay"),
         ("C7", "El maíz es", "op", ["Propio", "Comprado"], "Costo y si puede faltar"),
         ("C8", "Pesa lo que carga", "op", ["Balanza en el mixer", "Balde o bolsa contada", "A ojo"],
@@ -249,7 +254,8 @@ def puntos_debiles(r: Dict, lote: Optional[Dict] = None, peso_actual=None) -> Li
             previo = r.get("A10") or []
             if isinstance(previo, str):
                 previo = [previo]
-            forraje = [x.lower() for x in previo if x in ("Pasto", "Verdeo", "Rastrojo")]
+            forraje = [x.lower() for x in previo
+                       if x in ("Pasto", "Verdeo", "Rastrojo", "Rollo", "Silo de planta entera")]
             if forraje and not any(x in ("Grano", "Ya comían grano") for x in previo):
                 extra = f" y vienen solo de {' y '.join(forraje)}, sin grano"
             elif forraje:

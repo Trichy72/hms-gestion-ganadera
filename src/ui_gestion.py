@@ -262,9 +262,14 @@ def dialog_instalaciones(lote_id: int):
             actual = l.get(campo) or ""
             idx = list(ops.values()).index(actual) if actual in ops.values() else 0
             elegidos[campo] = ops[st.selectbox(titulo, list(ops), index=idx)]
+        reserva = st.number_input("Tanque de reserva de agua (litros, 0 si no tiene o no sabe)",
+                                  min_value=0, step=500, value=int(l.get("reserva_agua_l") or 0),
+                                  help="Para calcular cuántas horas aguanta el lote si se corta la bomba.")
         ok = st.form_submit_button("Guardar", type="primary", width="stretch")
     if ok:
-        db.actualizar_lote(lote_id, **{k: (v or None) for k, v in elegidos.items()})
+        datos = {k: (v or None) for k, v in elegidos.items()}
+        datos["reserva_agua_l"] = float(reserva) or None
+        db.actualizar_lote(lote_id, **datos)
         st.success("Guardado.")
         _refrescar()
 

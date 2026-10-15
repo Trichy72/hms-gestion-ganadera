@@ -95,7 +95,8 @@ def _resp(control: Optional[Dict], k: str) -> str:
 
 
 def recomendaciones(evento: Dict, tipo_comedero: str = "",
-                    inst: Optional[Dict] = None, control: Optional[Dict] = None) -> List[str]:
+                    inst: Optional[Dict] = None, control: Optional[Dict] = None,
+                    animales=None, peso_kg=None) -> List[str]:
     """Qué hacer, en orden de importancia, según el evento, el comedero,
     las instalaciones del corral y el último control del productor.
     Puede subir el nivel del evento (lo deja en evento['nivel'])."""
@@ -150,8 +151,16 @@ def recomendaciones(evento: Dict, tipo_comedero: str = "",
         critico = evento["nivel"] == "critico"
         if agua_ctrl:
             out.append("En el último control faltó agua: revisar bomba, caudal y flotantes ANTES del calor")
+        ag = agua_lote(animales, peso_kg, evento.get("tmax"), inst.get("reserva_agua_l"))
+        txt_ag = ""
+        if ag:
+            txt_ag = (f" Con {_n(evento.get('tmax'))} °C el lote toma unos {_n(ag['l_dia'])} L/día "
+                      f"({_n(ag['l_animal'])} L por animal)")
+            if ag.get("horas_reserva") is not None:
+                txt_ag += f"; la reserva alcanza para {_n(ag['horas_reserva'])} horas si se corta la bomba"
         out.append("Agua: bebederos limpios, con caudal y espacio para todos"
-                   + (" (son pocos: sumar un tanque o bebedero)" if beb == "pocos" else ""))
+                   + (" (son pocos: sumar un tanque o bebedero)" if beb == "pocos" else "")
+                   + ("." + txt_ag if txt_ag else ""))
         if sombra == "no":
             out.append("No tiene sombra: si se puede, media sombra provisoria")
         if silo:
@@ -184,4 +193,58 @@ def eventos_proximos(pronostico: List[Dict], hoy: Optional[date] = None,
         if ev:
             ev["fecha"] = f
             out.append(ev)
+    return out
+
+
+# ---------------------------------------------------------------------
+# Agua: consumo en terminación según peso y temperatura
+# Rasby y Walz 2011 (UNL Extension G2060), tabla del NRC 1996 basada en
+# Winchester y Morris 1956. Convertido de galones y libras a L y kg.
+# ---------------------------------------------------------------------
+_AGUA_TEMPS = [4.4, 10.0, 15.6, 21.1, 26.7, 32.2]
+_AGUA_TABLA = {
+    272.0: [22.7, 24.6, 28.0, 32.9, 37.9, 54.1],
+    363.0: [27.6, 29.9, 34.4, 40.5, 46.6, 65.9],
+    454.0: [32.9, 35.6, 40.9, 47.7, 54.9, 78.0],
+}
+
+
+def _interp(x, xs, ys):
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    for i in range(len(xs) - 1):
+        if xs[i] <= x <= xs[i + 1]:
+            t = (x - xs[i]) / (xs[i + 1] - xs[i])
+            return ys[i] + t * (ys[i + 1] - ys[i])
+    return ys[-1]
+
+
+def agua_litros_animal(peso_kg, temp_c) -> Optional[float]:
+    """Litros por animal por día. Fuera de 4-32 °C usa el borde de la
+    tabla (no extrapola). Fuera de 272-454 kg ajusta en proporción al peso."""
+    p, t = _f(peso_kg), _f(temp_c)
+    if p is None or t is None or p <= 0:
+        return None
+    pesos = sorted(_AGUA_TABLA)
+    por_peso = [_interp(t, _AGUA_TEMPS, _AGUA_TABLA[w]) for w in pesos]
+    if p < pesos[0]:
+        return por_peso[0] * p / pesos[0]
+    if p > pesos[-1]:
+        return por_peso[-1] * p / pesos[-1]
+    return _interp(p, pesos, por_peso)
+
+
+def agua_lote(animales, peso_kg, temp_c, reserva_l=None) -> Optional[Dict]:
+    """Litros por día del lote y cuántas horas aguanta la reserva."""
+    la = agua_litros_animal(peso_kg, temp_c)
+    n = _f(animales)
+    if la is None or not n:
+        return None
+    total = la * n
+    out = {"l_animal": la, "l_dia": total}
+    r = _f(reserva_l)
+    if r and total > 0:
+        out["horas_reserva"] = r / (total / 24)
     return out

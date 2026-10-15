@@ -381,6 +381,8 @@ def init_db(db_path: Optional[Path] = None) -> None:
             for _c in ("reparo", "sombra", "piso_corral", "bebederos"):
                 if _c not in cols_lotes:
                     conn.execute(f"ALTER TABLE lotes ADD COLUMN {_c} TEXT")
+            if "reserva_agua_l" not in cols_lotes:
+                conn.execute("ALTER TABLE lotes ADD COLUMN reserva_agua_l REAL")
             if "energia_dieta_mcal_em_kg_ms" not in cols_lotes:
                 conn.execute(
                     "ALTER TABLE lotes ADD COLUMN "

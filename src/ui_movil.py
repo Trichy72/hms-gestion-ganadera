@@ -472,7 +472,8 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             cuando = "hoy" if f == hoy else ("mañana" if (f - hoy).days == 1 else
                                               f"el {_dia_corto(f).lower()}/{f.month}")
             recos = cr.recomendaciones(ev, d["lote"].get("tipo_comedero_concentrado") or "",
-                                       d["lote"], d.get("control"))
+                                       d["lote"], d.get("control"),
+                                       d.get("animales"), d.get("peso_hoy") or d.get("peso"))
             nombre = ("frío" if ev["tipo"] == "frio" else "calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
             mas = f" (y {len(evs) - 1} día{'s' if len(evs) > 2 else ''} más)" if len(evs) > 1 else ""
             tareas.append((
@@ -1212,6 +1213,8 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
     from . import clima_reco as cr
     inst = [cr.INSTALACIONES[k].get(lote.get(k) or "") for k in cr.INSTALACIONES]
     inst = [x for x in inst if x]
+    if lote.get("reserva_agua_l"):
+        inst.append(f"reserva de agua {_num(lote['reserva_agua_l'], 0)} L")
     st.markdown(f'<div class="hm"><div class="hm-sub" style="margin:-4px 0 8px">Corral: '
                 f'{_e(" · ".join(inst)) if inst else "sin cargar (reparo, sombra, piso, bebederos)"}'
                 f'</div></div>', unsafe_allow_html=True)
@@ -1580,7 +1583,9 @@ def _seccion_clima(lote: Dict) -> None:
             ctrl = (_sql("SELECT * FROM controles_semanales WHERE lote_id = ? "
                          "ORDER BY COALESCE(fecha_respuesta, fecha_envio) DESC LIMIT 1",
                          (lote["id"],)) or [None])[0]
-            recos = cr.recomendaciones(ev, lote.get("tipo_comedero_concentrado") or "", lote, ctrl)
+            dd = datos_lote(lote)
+            recos = cr.recomendaciones(ev, lote.get("tipo_comedero_concentrado") or "", lote, ctrl,
+                                       dd.get("animales"), dd.get("peso_hoy") or dd.get("peso"))
             nombre = ("Frío" if ev["tipo"] == "frio" else "Calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
             if ev.get("notas"):
                 nombre += f" ({'; '.join(ev['notas'])})"
@@ -1591,9 +1596,31 @@ def _seccion_clima(lote: Dict) -> None:
                        + "".join(f"<li>{_e(r)}</li>" for r in recos) + "</ul></div>")
     except Exception as e:
         log.info("ui_movil: reco clima: %s", e)
+    agua_html = ""
+    try:
+        from . import clima_reco as cr
+        dd = datos_lote(lote)
+        peso = dd.get("peso_hoy") or dd.get("peso")
+        futuros = [x for x in dias if "Histórico" not in str(x.get("tramo"))]
+        hoy_x = next((x for x in futuros if "HOY" in str(x.get("tramo"))), futuros[0] if futuros else None)
+        peor = max(futuros, key=lambda x: x.get("t_max") or -99) if futuros else None
+        ag_h = cr.agua_lote(dd.get("animales"), peso, (hoy_x or {}).get("t_max"), lote.get("reserva_agua_l"))
+        ag_p = cr.agua_lote(dd.get("animales"), peso, (peor or {}).get("t_max"), lote.get("reserva_agua_l"))
+        if ag_h and ag_p:
+            fp = _fecha(peor.get("fecha"))
+            agua_html = (f'<div class="hm-sub" style="margin:6px 0">💧 Agua: hoy unos <b>{_num(ag_h["l_dia"], 0)} L</b> '
+                         f'para el lote ({_num(ag_h["l_animal"], 0)} L por animal con {_num(hoy_x.get("t_max"), 0)}°); '
+                         f'el día más caluroso ({_dm(fp)}, {_num(peor.get("t_max"), 0)}°) unos '
+                         f'<b>{_num(ag_p["l_dia"], 0)} L</b>.'
+                         + (f' La reserva de {_num(lote.get("reserva_agua_l"), 0)} L alcanza para '
+                            f'{_num(ag_p["horas_reserva"], 0)} horas ese día.' if ag_p.get("horas_reserva") else
+                            ' Sin dato de tanque de reserva (cargalo en Corral).')
+                         + '</div>')
+    except Exception as e:
+        log.info("ui_movil: agua: %s", e)
     st.markdown(
         f'<div class="hm"><div class="hm-lbl">CLIMA DEL CAMPO · {_e(info.get("localidad") or "")}</div>'
-        f'<div class="hm-card">{ahora}<div style="overflow-x:auto"><table class="hm-tab">'
+        f'<div class="hm-card">{ahora}{agua_html}<div style="overflow-x:auto"><table class="hm-tab">'
         f'<tr><th>Día</th><th>Mín / máx</th><th>Humedad</th><th>Lluvia</th><th>Viento</th>'
         f'<th>Cielo</th><th>THI</th><th>Estrés real</th></tr>{filas}</table></div>{al_html}'
         f'<div class="hm-sub" style="margin-top:6px">THI = índice de temperatura y humedad con la máxima del día: '

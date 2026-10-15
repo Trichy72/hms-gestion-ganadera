@@ -287,6 +287,52 @@ def dialog_instalaciones(lote_id: int):
         _refrescar()
 
 
+@st.dialog("Entrevista inicial del lote", width="large")
+def dialog_entrevista(lote_id: int):
+    import json as _json
+    from . import entrevista as ent
+    l = db.obtener_lote(lote_id) or {}
+    r0 = ent.cargar(l)
+    # Lo que ya está cargado en el lote sirve de punto de partida
+    pre = {"A3": l.get("cantidad_inicial"), "A4": l.get("peso_ingreso_kg"), "A5": l.get("edad_meses"),
+           "A6": l.get("altura_grupa_cm"), "F5": l.get("objetivo_peso_kg"), "D2b": l.get("reserva_agua_l"),
+           "F1": l.get("encargado_nombre"), "F1b": l.get("encargado_whatsapp")}
+    st.caption("Se hace una vez, cuando entra el lote. Lo que no se sabe se deja vacío o en "
+               "\"No sabe\": la app lo muestra como faltante, no lo inventa.")
+    r: Dict = {}
+    with st.form("f_entrevista"):
+        for letra, titulo, pregs in ent.BLOQUES:
+            st.markdown(f"**{letra}. {titulo}**")
+            for k, texto, tipo, ops, para in pregs:
+                v0 = r0.get(k, pre.get(k))
+                ayuda = f"Para qué: {para}"
+                if tipo == "op":
+                    lista = ["—"] + ops
+                    idx = lista.index(v0) if v0 in lista else 0
+                    x = st.selectbox(texto, lista, index=idx, key=f"ent_{k}", help=ayuda)
+                    r[k] = "" if x == "—" else x
+                elif tipo == "multi":
+                    dflt = [x for x in (v0 or []) if x in ops] if isinstance(v0, list) else []
+                    r[k] = st.multiselect(texto, ops, default=dflt, key=f"ent_{k}", help=ayuda)
+                elif tipo == "num":
+                    try:
+                        val = float(v0 or 0)
+                    except (TypeError, ValueError):
+                        val = 0.0
+                    r[k] = st.number_input(texto + " (0 = no sabe)", min_value=0.0, value=val,
+                                           step=1.0, key=f"ent_{k}", help=ayuda)
+                else:
+                    r[k] = st.text_input(texto, value=str(v0 or ""), key=f"ent_{k}", help=ayuda)
+        ok = st.form_submit_button("Guardar entrevista", type="primary", width="stretch")
+    if ok:
+        r = {k: v for k, v in r.items() if v not in ("", 0, 0.0, [], None)}
+        campos = ent.campos_lote(r)
+        db.actualizar_lote(lote_id, entrevista=_json.dumps(r, ensure_ascii=False),
+                           entrevista_fecha=_iso(date.today()), **campos)
+        st.success("Entrevista guardada. El estado de situación del lote ya está en la ficha.")
+        _refrescar()
+
+
 @st.dialog("Datos del cliente")
 def dialog_cliente(cliente_id: Optional[int] = None):
     c = db.obtener_cliente(cliente_id) if cliente_id else {}

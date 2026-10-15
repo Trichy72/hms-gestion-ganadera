@@ -482,6 +482,9 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
                 ))
         except Exception:
             pass
+        if not (d["lote"].get("entrevista") or ""):
+            tareas.append(("var(--hm-chip)", "var(--hm-sub)", "📋",
+                           f"{d['cliente']} · falta la entrevista inicial", ""))
 
     # Clima: eventos de frío o calor de los próximos días en el campo de
     # cada cliente, con el motivo y qué hacer según el comedero del lote.
@@ -538,6 +541,14 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             resto.insert(min(pos, len(resto)), (grupo[0][0], grupo[0][1], ico,
                                                 f"{titulo}: {len(grupo)} lotes", det))
             tareas = resto
+    sin_ent = [t for t in tareas if t[2] == "📋"]
+    tareas = [t for t in tareas if t[2] != "📋"]
+    if sin_ent:
+        nombres = [t[3].split(" · ")[0] for t in sin_ent]
+        tareas.append(("var(--hm-chip)", "var(--hm-sub)", "📋",
+                       f"Falta la entrevista inicial de {len(nombres)} lote{'s' if len(nombres) != 1 else ''}",
+                       ", ".join(nombres[:5]) + (f" y {len(nombres) - 5} más" if len(nombres) > 5 else "")
+                       + ". Con ella la app marca los puntos débiles de cada lote. Se hace desde la ficha."))
     if sin_wa:
         nombres = [t[3].split(" · ")[0] for t in sin_wa]
         tareas.append(("var(--hm-chip)", "var(--hm-sub)", "☎",
@@ -1268,7 +1279,57 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
         _g.dialog_objetivos(d["id"])
     if b2.button("🏠 Corral (reparo, sombra, piso, agua)", key=f"{kp}_inst_{d['id']}", width="stretch"):
         _g.dialog_instalaciones(d["id"])
+    _seccion_situacion(lote, d, kp)
     _analisis_ia(lote, d, kp)
+
+
+_COL_SIT = {"rojo": ("#FBE3E1", "#B42318"), "amarillo": ("#FCEFD2", "#9A6700")}
+_AREA_SIT = {"consumo": "Comedero", "alimento": "Alimento", "agua": "Agua", "ambiente": "Corral",
+             "sanidad": "Sanidad", "manejo": "Manejo", "objetivo": "Objetivo"}
+
+
+def _seccion_situacion(lote: Dict, d: Dict, kp: str) -> None:
+    """Estado de situación del lote a partir de la entrevista inicial:
+    puntos débiles con su número y su fuente, y qué vigila el control semanal."""
+    from . import entrevista as ent
+    from . import ui_gestion as _g
+    r = ent.cargar(lote)
+    if not r:
+        st.markdown('<div class="hm"><div class="hm-lbl">ESTADO DE SITUACIÓN</div><div class="hm-card">'
+                    '<div class="hm-sub">Falta la entrevista inicial. Con ella la app arma los puntos débiles '
+                    'de este lote y el control semanal pregunta solo lo que importa.</div></div></div>',
+                    unsafe_allow_html=True)
+        if st.button("📋 Hacer la entrevista inicial", key=f"{kp}_ent_{d['id']}", type="primary",
+                     width="stretch"):
+            _g.dialog_entrevista(d["id"])
+        return
+    pts = ent.puntos_debiles(r, lote, d.get("peso_hoy") or d.get("peso"))
+    falt = ent.faltantes(r)
+    filas = []
+    for p in pts:
+        bg, fg = _COL_SIT.get(p["nivel"], ("var(--hm-chip)", "var(--hm-sub)"))
+        fuente = f'<div class="hm-sub" style="font-size:12px">Fuente: {_e(p["fuente"])}</div>' if p.get("fuente") else ""
+        filas.append(f'<div style="display:flex;gap:8px;margin:6px 0"><span style="background:{bg};color:{fg};'
+                     f'border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600;white-space:nowrap;'
+                     f'height:fit-content">{_AREA_SIT.get(p["area"], p["area"])}</span>'
+                     f'<div>{_e(p["texto"])}.{fuente}</div></div>')
+    if not filas:
+        filas.append('<div class="hm-sub">Sin puntos débiles con lo que se contestó.</div>')
+    vig = ent.preguntas_semanales(pts)
+    vig_txt = ", ".join(ent.CONTROL_TXT.get(k, k) for k in vig if k != "12")
+    n_r = sum(p["nivel"] == "rojo" for p in pts)
+    n_a = sum(p["nivel"] == "amarillo" for p in pts)
+    cab = (f'<b>{n_r} rojo{"s" if n_r != 1 else ""}</b> y ' if n_r else "") + \
+          f'{n_a} para mirar · entrevista del {_dm(_fecha(lote.get("entrevista_fecha")))}'
+    extra = (f'<div class="hm-nota"><b>Control semanal de este lote:</b> {_e(vig_txt)}'
+             f' (y jadeo en semanas de calor).</div>')
+    if falt:
+        extra += f'<div class="hm-nota"><b>Faltan datos:</b> {_e(", ".join(falt))}.</div>'
+    st.markdown(f'<div class="hm"><div class="hm-lbl">ESTADO DE SITUACIÓN</div><div class="hm-card">'
+                f'<div class="hm-sub" style="margin-bottom:4px">{cab}</div>{"".join(filas)}{extra}'
+                f'</div></div>', unsafe_allow_html=True)
+    if st.button("📋 Ver o corregir la entrevista inicial", key=f"{kp}_ent_{d['id']}", width="stretch"):
+        _g.dialog_entrevista(d["id"])
 
 
 def _analisis_ia(lote: Dict, d: Dict, kp: str) -> None:
@@ -1283,6 +1344,15 @@ def _analisis_ia(lote: Dict, d: Dict, kp: str) -> None:
         st.markdown(f'<div class="hm"><div class="hm-card"><div class="hm-lbl">ANÁLISIS DE LA IA · '
                     f'borrador para revisar</div></div></div>', unsafe_allow_html=True)
         st.markdown(txt)
+
+
+def _puntos_ia(lote: Dict, d: Dict):
+    from . import entrevista as ent
+    r = ent.cargar(lote)
+    if not r:
+        return "no se hizo la entrevista inicial"
+    return [f"{p['nivel']}: {p['texto']}" + (f" ({p['fuente']})" if p.get("fuente") else "")
+            for p in ent.puntos_debiles(r, lote, d.get("peso_hoy") or d.get("peso"))]
 
 
 def _pedir_analisis_ia(lote: Dict, d: Dict) -> str:
@@ -1311,6 +1381,7 @@ def _pedir_analisis_ia(lote: Dict, d: Dict) -> str:
         "peso_estimado_hoy": d.get("peso_hoy"), "peso_de_venta": d.get("peso_venta"),
         "comedero": lote.get("tipo_comedero_concentrado"),
         "instalaciones_corral": inst,
+        "puntos_debiles_entrevista_inicial": _puntos_ia(lote, d),
         "racion_vigente": dieta[0] if dieta else None,
         "alimento_dias_restantes": (d.get("stock_min") or {}).get("dias_restantes"),
         "consumo_real_vs_racion_pct": d.get("consumo_pct"),

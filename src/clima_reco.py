@@ -72,13 +72,56 @@ def evento_del_dia(dia: Dict) -> Optional[Dict]:
             "tmin": tmin, "lluvia": lluvia, "viento": viento}
 
 
-def recomendaciones(evento: Dict, tipo_comedero: str = "") -> List[str]:
-    """Qué hacer, en orden de importancia, según el evento y el comedero."""
+INSTALACIONES = {
+    "reparo": {"si": "Tiene reparo (monte, cortina o armado)", "parcial": "Reparo parcial",
+               "no": "No tiene reparo"},
+    "sombra": {"si": "Tiene sombra", "parcial": "Sombra parcial", "no": "No tiene sombra"},
+    "piso_corral": {"firme": "Piso firme, drena bien", "medio": "Se embarra con lluvias fuertes",
+                    "malo": "Se embarra con cualquier lluvia"},
+    "bebederos": {"ok": "Bebederos de sobra", "justo": "Bebederos justos", "pocos": "Pocos bebederos"},
+}
+
+
+def _resp(control: Optional[Dict], k: str) -> str:
+    r = (control or {}).get("respuestas") or {}
+    if isinstance(r, str):
+        try:
+            import json
+            r = json.loads(r)
+        except Exception:
+            r = {}
+    v = r.get(k)
+    return (v[0] if isinstance(v, list) and v else (v or "")).upper()
+
+
+def recomendaciones(evento: Dict, tipo_comedero: str = "",
+                    inst: Optional[Dict] = None, control: Optional[Dict] = None) -> List[str]:
+    """Qué hacer, en orden de importancia, según el evento, el comedero,
+    las instalaciones del corral y el último control del productor.
+    Puede subir el nivel del evento (lo deja en evento['nivel'])."""
+    inst = inst or {}
     silo = _es_silo(tipo_comedero)
-    critico = evento.get("nivel") == "critico"
+    reparo, sombra = inst.get("reparo") or "", inst.get("sombra") or ""
+    piso, beb = inst.get("piso_corral") or "", inst.get("bebederos") or ""
+    barro_ctrl = _resp(control, "7") in ("C", "D")      # barro que tapa la pezuña o más
+    agua_ctrl = _resp(control, "6") in ("C", "D")       # faltó agua en la semana
     out: List[str] = []
+    notas: List[str] = []
     if evento["tipo"] == "frio":
         lluvia = evento.get("lluvia") or 0
+        # Sube a crítico: lluvia sobre un corral que ya tiene barro o se
+        # embarra fácil, o sin reparo con viento fuerte.
+        if evento["nivel"] == "moderado" and (
+                (lluvia > 5 and (barro_ctrl or piso == "malo"))
+                or (reparo == "no" and (evento.get("viento") or 0) >= 25)):
+            evento["nivel"] = "critico"
+            notas.append("sube a crítico por las condiciones del corral")
+        critico = evento["nivel"] == "critico"
+        if reparo == "no":
+            out.append("Armar reparo YA: rollos apilados del lado del viento (el corral no tiene)")
+        if barro_ctrl and lluvia > 5:
+            out.append("El corral ya tiene barro (último control): sector alto y seco "
+                       "para echarse antes de que llueva")
         if silo:
             out.append("Silo comedero: que no se quede vacío esos días y que la mezcla "
                        "no se moje ni se apelmace (cubrir la boca si llueve)")
@@ -88,26 +131,40 @@ def recomendaciones(evento: Dict, tipo_comedero: str = "") -> List[str]:
             out.append("Comedero: cargar la comida principal a la tarde y que no "
                        "quede vacío a la noche")
             out.append("Fibra larga disponible esos días (rollo o picado)")
-        out.append("Reparo del viento: rollos apilados, monte o cortina")
-        if lluvia > 5 or critico:
+        if reparo in ("", "parcial"):
+            out.append("Reparo del viento: rollos apilados, monte o cortina"
+                       + (" (hoy es parcial)" if reparo == "parcial" else ""))
+        if (lluvia > 5 or critico) and not (barro_ctrl and lluvia > 5):
             out.append("Sector alto y seco para echarse; evitar barro en la zona "
-                       "del comedero y del bebedero")
+                       "del comedero y del bebedero"
+                       + (" (el piso se embarra fácil)" if piso in ("malo", "medio") else ""))
         if (evento.get("tmin") is not None and evento["tmin"] < 1):
             out.append("Bebederos: revisar hielo al amanecer")
         out.append("No cambiar la ración durante el evento")
         if critico:
             out.append("Recorrer temprano: animales chicos, débiles o echados en el barro")
     else:  # calor
-        out.append("Agua: bebederos limpios, con caudal y espacio para todos")
+        if evento["nivel"] == "moderado" and (sombra == "no" or beb == "pocos" or agua_ctrl):
+            evento["nivel"] = "critico"
+            notas.append("sube a crítico por falta de sombra o de agua")
+        critico = evento["nivel"] == "critico"
+        if agua_ctrl:
+            out.append("En el último control faltó agua: revisar bomba, caudal y flotantes ANTES del calor")
+        out.append("Agua: bebederos limpios, con caudal y espacio para todos"
+                   + (" (son pocos: sumar un tanque o bebedero)" if beb == "pocos" else ""))
+        if sombra == "no":
+            out.append("No tiene sombra: si se puede, media sombra provisoria")
         if silo:
             out.append("Silo comedero: no llenarlo de más, que la mezcla no se caliente "
                        "ni fermente; revisar que no se quede vacío")
         else:
             out.append("Comedero: dar la mayor parte de la comida después de las 18 h")
-        out.append("Sombra si hay; no mover ni trabajar animales en horas de calor")
+        if sombra != "no":
+            out.append("No mover ni trabajar animales en horas de calor")
         out.append("No cambiar la ración durante el evento")
         if critico:
             out.append("Mirar jadeo a la siesta; si hay forma, mojar el piso del corral")
+    evento["notas"] = notas
     return out
 
 

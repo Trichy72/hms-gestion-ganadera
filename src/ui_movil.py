@@ -471,8 +471,9 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             f = ev["fecha"]
             cuando = "hoy" if f == hoy else ("mañana" if (f - hoy).days == 1 else
                                               f"el {_dia_corto(f).lower()}/{f.month}")
+            recos = cr.recomendaciones(ev, d["lote"].get("tipo_comedero_concentrado") or "",
+                                       d["lote"], d.get("control"))
             nombre = ("frío" if ev["tipo"] == "frio" else "calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
-            recos = cr.recomendaciones(ev, d["lote"].get("tipo_comedero_concentrado") or "")
             mas = f" (y {len(evs) - 1} día{'s' if len(evs) > 2 else ''} más)" if len(evs) > 1 else ""
             tareas.append((
                 "#E3ECF7" if ev["tipo"] == "frio" else "#FCE4D6",
@@ -1208,9 +1209,98 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
     st.markdown(f'<div class="hm"><div class="hm-lbl">SEGUIMIENTO</div><div class="hm-card">'
                 f'<table class="hm-tab">{h}</table></div></div>', unsafe_allow_html=True)
     from . import ui_gestion as _g
-    if st.button("🎯 Objetivos del lote (peso de venta, ganancia esperada)",
-                 key=f"{kp}_obj_{d['id']}", width="stretch"):
+    from . import clima_reco as cr
+    inst = [cr.INSTALACIONES[k].get(lote.get(k) or "") for k in cr.INSTALACIONES]
+    inst = [x for x in inst if x]
+    st.markdown(f'<div class="hm"><div class="hm-sub" style="margin:-4px 0 8px">Corral: '
+                f'{_e(" · ".join(inst)) if inst else "sin cargar (reparo, sombra, piso, bebederos)"}'
+                f'</div></div>', unsafe_allow_html=True)
+    b1, b2 = st.columns(2)
+    if b1.button("🎯 Objetivos (peso de venta, ganancia)", key=f"{kp}_obj_{d['id']}", width="stretch"):
         _g.dialog_objetivos(d["id"])
+    if b2.button("🏠 Corral (reparo, sombra, piso, agua)", key=f"{kp}_inst_{d['id']}", width="stretch"):
+        _g.dialog_instalaciones(d["id"])
+    _analisis_ia(lote, d, kp)
+
+
+def _analisis_ia(lote: Dict, d: Dict, kp: str) -> None:
+    """Botón para que la IA lea todo el lote y proponga qué hacer. Es una
+    sugerencia para Mauri: la lee y la ajusta antes de decirle nada al cliente."""
+    key = f"{kp}_ia_{d['id']}"
+    if st.button("🤖 Analizar este lote con IA", key=key + "_b", width="stretch"):
+        with st.spinner("Analizando el lote…"):
+            st.session_state[key] = _pedir_analisis_ia(lote, d)
+    txt = st.session_state.get(key)
+    if txt:
+        st.markdown(f'<div class="hm"><div class="hm-card"><div class="hm-lbl">ANÁLISIS DE LA IA · '
+                    f'borrador para revisar</div></div></div>', unsafe_allow_html=True)
+        st.markdown(txt)
+
+
+def _pedir_analisis_ia(lote: Dict, d: Dict) -> str:
+    import json as _json
+    import os
+    from . import clima_reco as cr
+    try:
+        key = os.environ.get("ANTHROPIC_API_KEY") or str(st.secrets.get("ANTHROPIC_API_KEY", "") or "")
+    except Exception:
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        return "Falta configurar la clave de la IA (ANTHROPIC_API_KEY) en la app."
+    info = _clima_cliente(lote.get("cliente_id")) or {}
+    hoy = date.today()
+    pron = [x for x in info.get("pronostico_7d") or [] if (_fecha(x.get("fecha")) or hoy) >= hoy - timedelta(days=3)]
+    dieta = _sql("SELECT fecha, composicion_json, observaciones FROM dietas WHERE lote_id = ? "
+                 "ORDER BY fecha DESC LIMIT 1", (d["id"],))
+    ctrl = d.get("control") or {}
+    inst = {k: cr.INSTALACIONES[k].get(lote.get(k) or "", "sin dato") for k in cr.INSTALACIONES}
+    datos = {
+        "cliente": d["cliente"], "localidad": d.get("localidad"),
+        "categoria": lote.get("categoria"), "raza": lote.get("raza"),
+        "animales": d.get("animales"), "dia_de_encierre": d.get("dia"),
+        "peso_ultima_pesada_kg": d.get("peso"), "fecha_ultima_pesada": str(d.get("fecha_peso")),
+        "ganancia_kg_dia_medida": d.get("adpv"), "ganancia_esperada": d.get("adpv_esp"),
+        "peso_estimado_hoy": d.get("peso_hoy"), "peso_de_venta": d.get("peso_venta"),
+        "comedero": lote.get("tipo_comedero_concentrado"),
+        "instalaciones_corral": inst,
+        "racion_vigente": dieta[0] if dieta else None,
+        "alimento_dias_restantes": (d.get("stock_min") or {}).get("dias_restantes"),
+        "consumo_real_vs_racion_pct": d.get("consumo_pct"),
+        "muertes": d.get("muertes"),
+        "ultimo_control": {k: ctrl.get(k) for k in ("fecha_respuesta", "respuestas", "comentarios",
+                                                     "semaforo_general", "semaforo_sanidad",
+                                                     "semaforo_consumo", "semaforo_ambiente",
+                                                     "semaforo_alimento")} if ctrl else None,
+        "clima_3_dias_atras_hoy_y_7_adelante": [
+            {k: x.get(k) for k in ("fecha", "t_min", "t_max", "hr_media", "precipitacion_mm",
+                                   "viento_max_kmh", "nubes_pct", "thi", "severidad_real")} for x in pron],
+    }
+    sistema = (
+        "Sos el asistente técnico de Mauri, asesor en nutrición de bovinos en encierre a corral "
+        "en La Pampa (HMS Nutrición Animal). Te paso los datos de UN lote de un cliente. "
+        "Escribile a Mauri (no al cliente), en castellano rioplatense, claro y concreto: "
+        "1) cómo viene el lote en dos o tres líneas con los números que importan; "
+        "2) los riesgos de los próximos 7 días por clima, según las instalaciones y el comedero; "
+        "3) qué haría, en una lista corta ordenada por prioridad. "
+        "Reglas: usá solo los datos que te paso; si falta un dato importante, decilo en vez de suponerlo. "
+        "No inventes números. Con silo comedero no se cambia la mezcla por pocos días. "
+        "No propongas cambios de ración durante un evento climático. "
+        "No nombres marcas comerciales salvo las que aparecen en la ración. Máximo 220 palabras.")
+    try:
+        from anthropic import Anthropic
+        cli = Anthropic(api_key=key, timeout=60.0)
+        ultimo_error = None
+        for modelo in ("claude-sonnet-5-5", "claude-sonnet-4-5"):
+            try:
+                r = cli.messages.create(
+                    model=modelo, max_tokens=900, system=sistema,
+                    messages=[{"role": "user", "content": _json.dumps(datos, ensure_ascii=False, default=str)}])
+                return "".join(getattr(b, "text", "") for b in r.content).strip()
+            except Exception as e:
+                ultimo_error = e
+        return f"No se pudo consultar la IA: {ultimo_error}"
+    except Exception as e:
+        return f"No se pudo consultar la IA: {e}"
 
 
 def _seccion_racion(lote_id: int, d: Dict) -> None:
@@ -1487,9 +1577,14 @@ def _seccion_clima(lote: Dict) -> None:
         evs = cr.eventos_proximos(todos, date.today(), dias=6)
         if evs:
             ev = evs[0]
+            ctrl = (_sql("SELECT * FROM controles_semanales WHERE lote_id = ? "
+                         "ORDER BY COALESCE(fecha_respuesta, fecha_envio) DESC LIMIT 1",
+                         (lote["id"],)) or [None])[0]
+            recos = cr.recomendaciones(ev, lote.get("tipo_comedero_concentrado") or "", lote, ctrl)
             nombre = ("Frío" if ev["tipo"] == "frio" else "Calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
+            if ev.get("notas"):
+                nombre += f" ({'; '.join(ev['notas'])})"
             otros = ", ".join(_dm(e["fecha"]) for e in evs[1:])
-            recos = cr.recomendaciones(ev, lote.get("tipo_comedero_concentrado") or "")
             al_html = (f'<div class="hm-nota"><b>{nombre} el {_dm(ev["fecha"])}</b>'
                        + (f" (también {otros})" if otros else "")
                        + f": {_e(ev['motivo'])}.<br><b>Qué hacer:</b><ul style='margin:4px 0 0 18px;padding:0'>"

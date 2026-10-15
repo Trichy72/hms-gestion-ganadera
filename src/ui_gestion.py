@@ -249,6 +249,26 @@ def dialog_objetivos(lote_id: int):
         _refrescar()
 
 
+@st.dialog("Corral del lote")
+def dialog_instalaciones(lote_id: int):
+    from . import clima_reco as cr
+    l = db.obtener_lote(lote_id) or {}
+    st.caption("Con esto los avisos de clima se ajustan a cómo es el corral.")
+    elegidos = {}
+    with st.form("f_inst"):
+        for campo, titulo in (("reparo", "Reparo del viento"), ("sombra", "Sombra"),
+                              ("piso_corral", "Piso del corral"), ("bebederos", "Bebederos")):
+            ops = {"Sin dato": ""} | {v: k for k, v in cr.INSTALACIONES[campo].items()}
+            actual = l.get(campo) or ""
+            idx = list(ops.values()).index(actual) if actual in ops.values() else 0
+            elegidos[campo] = ops[st.selectbox(titulo, list(ops), index=idx)]
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        db.actualizar_lote(lote_id, **{k: (v or None) for k, v in elegidos.items()})
+        st.success("Guardado.")
+        _refrescar()
+
+
 @st.dialog("Datos del cliente")
 def dialog_cliente(cliente_id: Optional[int] = None):
     c = db.obtener_cliente(cliente_id) if cliente_id else {}

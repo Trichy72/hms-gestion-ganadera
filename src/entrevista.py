@@ -49,8 +49,8 @@ BLOQUES = [
          "Remate o mezcla = más riesgo respiratorio al principio"),
         ("A9", "Horas de viaje hasta el corral", "num", None,
          "Viaje largo = más cuidado en la recepción"),
-        ("A10", "De dónde vienen comiendo", "op", ["Pasto", "Verdeo", "Rastrojo",
-                                                   "Ya comían grano", NS],
+        ("A10", "De dónde vienen comiendo (puede ser más de uno)", "multi",
+         ["Pasto", "Verdeo", "Rastrojo", "Grano", NS],
          "Cuánto dura la adaptación al grano"),
     ]),
     ("B", "Sanidad al ingreso", [
@@ -246,8 +246,16 @@ def puntos_debiles(r: Dict, lote: Optional[Dict] = None, peso_actual=None) -> Li
         c5 = r.get("C5") or ""
         dias = _n(r, "C5b") if c5.startswith("Sí") else (0 if c5.startswith("No") else None)
         if dias is not None and dias < 20:
-            previo = r.get("A10") or ""
-            extra = f" y vienen de {previo.lower()}" if previo in ("Pasto", "Verdeo", "Rastrojo") else ""
+            previo = r.get("A10") or []
+            if isinstance(previo, str):
+                previo = [previo]
+            forraje = [x.lower() for x in previo if x in ("Pasto", "Verdeo", "Rastrojo")]
+            if forraje and not any(x in ("Grano", "Ya comían grano") for x in previo):
+                extra = f" y vienen solo de {' y '.join(forraje)}, sin grano"
+            elif forraje:
+                extra = f" (venían de {' y '.join(forraje)} con algo de grano)"
+            else:
+                extra = ""
             out.append(_p("consumo", "rojo",
                           (f"Adaptación de {_num(dias)} días en comedero lineal" if dias else
                            "Van directo al silo comedero sin adaptación") + extra +

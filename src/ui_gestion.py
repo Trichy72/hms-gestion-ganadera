@@ -312,8 +312,11 @@ def dialog_entrevista(lote_id: int):
                     x = st.selectbox(texto, lista, index=idx, key=f"ent_{k}", help=ayuda)
                     r[k] = "" if x == "—" else x
                 elif tipo == "multi":
-                    dflt = [x for x in (v0 or []) if x in ops] if isinstance(v0, list) else []
-                    r[k] = st.multiselect(texto, ops, default=dflt, key=f"ent_{k}", help=ayuda)
+                    v0l = v0 if isinstance(v0, list) else ([v0] if v0 else [])
+                    v0l = ["Grano" if x == "Ya comían grano" else x for x in v0l]
+                    dflt = [x for x in v0l if x in ops]
+                    r[k] = st.multiselect(texto, ops, default=dflt, key=f"ent_{k}", help=ayuda,
+                                          placeholder="Elegí una o más")
                 elif tipo == "num":
                     try:
                         val = float(v0 or 0)

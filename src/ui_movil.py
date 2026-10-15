@@ -458,15 +458,28 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         except Exception:
             pass
 
-    # Clima: solo clientes con lote activo (una consulta por hora).
+    # Clima: eventos de frío o calor de los próximos días en el campo de
+    # cada cliente, con el motivo y qué hacer según el comedero del lote.
     try:
-        ids = tuple(sorted({d["lote"].get("cliente_id") for d in datos}))
-        for cli, al in _alertas_clima(ids):
+        from . import clima_reco as cr
+        for d in datos:
+            info = _clima_cliente(d["lote"].get("cliente_id"))
+            evs = cr.eventos_proximos((info or {}).get("pronostico_7d") or [], hoy, dias=5)
+            if not evs:
+                continue
+            ev = evs[0]
+            f = ev["fecha"]
+            cuando = "hoy" if f == hoy else ("mañana" if (f - hoy).days == 1 else
+                                              f"el {_dia_corto(f).lower()}/{f.month}")
+            nombre = ("frío" if ev["tipo"] == "frio" else "calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
+            recos = cr.recomendaciones(ev, d["lote"].get("tipo_comedero_concentrado") or "")
+            mas = f" (y {len(evs) - 1} día{'s' if len(evs) > 2 else ''} más)" if len(evs) > 1 else ""
             tareas.append((
-                "#E3ECF7", "#2C5E9E", al.get("icono") or "☁",
-                f"{cli} · {al.get('titulo') or 'alerta de clima'}",
-                f"{al.get('cuando') or ''}. "
-                + ("; ".join((al.get("acciones") or [])[:2]) if al.get("acciones") else ""),
+                "#E3ECF7" if ev["tipo"] == "frio" else "#FCE4D6",
+                "#2C5E9E" if ev["tipo"] == "frio" else "#B4430E",
+                "❄" if ev["tipo"] == "frio" else "☀",
+                f"{d['cliente']} · {nombre} {cuando}{mas}",
+                ev["motivo"].capitalize() + ". " + "; ".join(recos[:3]) + ".",
             ))
     except Exception as e:
         log.info("ui_movil: clima: %s", e)
@@ -1468,7 +1481,21 @@ def _seccion_clima(lote: Dict) -> None:
         for al in al_l.get("alertas") or []:
             if str(al.get("severidad") or "").lower() in ("warning", "critica") and al.get("titulo") not in alertas:
                 alertas.append(al.get("titulo"))
-    al_html = "".join(f'<div class="hm-nota">⚠ {_e(a)}</div>' for a in alertas[:3])
+    al_html = ""
+    try:
+        from . import clima_reco as cr
+        evs = cr.eventos_proximos(todos, date.today(), dias=6)
+        if evs:
+            ev = evs[0]
+            nombre = ("Frío" if ev["tipo"] == "frio" else "Calor") + (" crítico" if ev["nivel"] == "critico" else " moderado")
+            otros = ", ".join(_dm(e["fecha"]) for e in evs[1:])
+            recos = cr.recomendaciones(ev, lote.get("tipo_comedero_concentrado") or "")
+            al_html = (f'<div class="hm-nota"><b>{nombre} el {_dm(ev["fecha"])}</b>'
+                       + (f" (también {otros})" if otros else "")
+                       + f": {_e(ev['motivo'])}.<br><b>Qué hacer:</b><ul style='margin:4px 0 0 18px;padding:0'>"
+                       + "".join(f"<li>{_e(r)}</li>" for r in recos) + "</ul></div>")
+    except Exception as e:
+        log.info("ui_movil: reco clima: %s", e)
     st.markdown(
         f'<div class="hm"><div class="hm-lbl">CLIMA DEL CAMPO · {_e(info.get("localidad") or "")}</div>'
         f'<div class="hm-card">{ahora}<div style="overflow-x:auto"><table class="hm-tab">'

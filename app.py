@@ -1709,7 +1709,7 @@ else:
     if not _logo_path_hdr.exists():
         _logo_path_hdr = Path("assets/logo.png")
 # Logo según el modo del sistema: blanco en oscuro, color en claro.
-_lb_hdr, _lc_hdr = Path("assets/logo_blanco.png"), Path("assets/logo.png")
+_lb_hdr, _lc_hdr = Path("assets/logo_blanco.png"), Path("assets/logo_hdr.png")
 if _lb_hdr.exists() and _lc_hdr.exists():
     import base64 as _b64_hdr
     _st_img = 'style="height:30px;width:auto;max-width:110px;object-fit:contain;"'
@@ -1734,8 +1734,8 @@ elif _logo_path_hdr.exists():
 st.markdown(
     '<style>'
     '.block-container{padding-top:3.4rem !important;}'
-    '@media (min-width:900px){.block-container{max-width:1280px !important;'
-    'margin:0 auto !important;}}'
+    '@media (min-width:900px){.block-container{max-width:100% !important;'
+    'padding-left:2.2rem !important;padding-right:2.2rem !important;}}'
     '[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],'
     '[data-testid="stExpandSidebarButton"]{display:none !important;}'
     '@media (max-width:640px){.block-container{padding-left:.8rem !important;'
@@ -1744,7 +1744,7 @@ st.markdown(
     f'<div style="display:flex;justify-content:space-between;align-items:center;'
     f'gap:10px;padding:6px 0 10px;">'
     f'<div style="display:flex;align-items:center;gap:10px;">'
-    f'{_logo_html_hdr.replace("height:30px", "height:46px").replace("max-width:110px", "max-width:150px").replace("height:60px", "height:40px").replace("max-width:220px", "max-width:150px")}'
+    f'{_logo_html_hdr.replace("height:30px", "height:64px").replace("max-width:110px", "max-width:240px").replace("height:60px", "height:40px").replace("max-width:220px", "max-width:150px")}'
     f'</div>'
     f'<div style="font-size:12px;color:#8a8f98;text-align:right;">'
     f'{_fecha_es_hdr}</div></div>',

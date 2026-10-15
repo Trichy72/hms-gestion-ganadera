@@ -200,6 +200,21 @@ _AREAS_TXT = (("sanidad", "sanidad"), ("consumo", "consumo"),
               ("ambiente", "ambiente"), ("alimento", "alimento"))
 
 
+def _txt_caudal(lote: Dict, d: Dict, ag: Optional[Dict]) -> str:
+    """Compara la reposición del bebedero con lo que hace falta en verano."""
+    from . import clima_reco as cr
+    req = cr.caudal_requerido(d.get("animales"), d.get("peso_hoy") or d.get("peso"),
+                              (ag or {}).get("l_dia"), verano=True)
+    if not req:
+        return ""
+    cau = lote.get("caudal_l_min")
+    base = f' Con calor, el bebedero tiene que reponer <b>{_num(req["l_min"], 0)} L/min</b> (el agua del día en 4 horas)'
+    if not cau:
+        return base + '; falta medir la reposición (cargala en Corral).'
+    ok = float(cau) >= req["l_min"]
+    return base + (f'; hoy repone {_num(cau, 0)} L/min: ' + ('alcanza.' if ok else '<b>no alcanza</b>.'))
+
+
 def _ms_animal(d: Dict) -> Optional[float]:
     """Materia seca consumida por animal según la ración cargada; None si
     la ración no tiene materia seca (no se supone)."""
@@ -1243,6 +1258,8 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
     inst = [x for x in inst if x]
     if lote.get("reserva_agua_l"):
         inst.append(f"reserva de agua {_num(lote['reserva_agua_l'], 0)} L")
+    if lote.get("caudal_l_min"):
+        inst.append(f"bebedero repone {_num(lote['caudal_l_min'], 0)} L/min")
     st.markdown(f'<div class="hm"><div class="hm-sub" style="margin:-4px 0 8px">Corral: '
                 f'{_e(" · ".join(inst)) if inst else "sin cargar (reparo, sombra, piso, bebederos)"}'
                 f'</div></div>', unsafe_allow_html=True)
@@ -1646,6 +1663,7 @@ def _seccion_clima(lote: Dict) -> None:
                          + (f' La reserva de {_num(lote.get("reserva_agua_l"), 0)} L alcanza para '
                             f'{_num(ag_p["horas_reserva"], 0)} horas ese día.' if ag_p.get("horas_reserva") else
                             ' Sin dato de tanque de reserva (cargalo en Corral).')
+                         + _txt_caudal(lote, dd, ag_p)
                          + f' <span style="opacity:.75">Cálculo: {ag_h["metodo"]}'
                          + ('' if ms else ' (la ración no tiene materia seca cargada; con ese dato se usa Ahlberg 2018)')
                          + '. Para dimensionar bomba y tanque, el INTA pide 70 L por animal por día en verano.</span>'

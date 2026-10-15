@@ -273,10 +273,15 @@ def dialog_instalaciones(lote_id: int):
         reserva = st.number_input("Tanque de reserva de agua (litros, 0 si no tiene o no sabe)",
                                   min_value=0, step=500, value=int(l.get("reserva_agua_l") or 0),
                                   help="Para calcular cuántas horas aguanta el lote si se corta la bomba.")
+        caudal = st.number_input("Reposición del bebedero (litros por minuto, 0 si no sabe)",
+                                 min_value=0.0, step=1.0, value=float(l.get("caudal_l_min") or 0),
+                                 help="Cómo medirlo: con el bebedero bajo, contar cuántos segundos tarda el "
+                                      "flotante en llenar un balde de 20 L. Litros por minuto = 20 × 60 ÷ segundos.")
         ok = st.form_submit_button("Guardar", type="primary", width="stretch")
     if ok:
         datos = {k: (v or None) for k, v in elegidos.items()}
         datos["reserva_agua_l"] = float(reserva) or None
+        datos["caudal_l_min"] = float(caudal) or None
         db.actualizar_lote(lote_id, **datos)
         st.success("Guardado.")
         _refrescar()

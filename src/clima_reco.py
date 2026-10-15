@@ -155,6 +155,16 @@ def recomendaciones(evento: Dict, tipo_comedero: str = "",
             out.append("En el último control faltó agua: revisar bomba, caudal y flotantes ANTES del calor")
         ag = agua_lote(animales, peso_kg, evento.get("tmax"), inst.get("reserva_agua_l"),
                        ms_kg, evento.get("dia"))
+        req = caudal_requerido(animales, peso_kg, (ag or {}).get("l_dia"), verano=True)
+        cau = _f(inst.get("caudal_l_min"))
+        if req and cau:
+            if cau < req["l_min"]:
+                out.insert(0, f"La reposición del bebedero ({_n(cau)} L/min) no alcanza: con calor hacen falta "
+                              f"{_n(req['l_min'])} L/min para reponer el agua del día en 4 horas. "
+                              f"Sumar un tanque de reserva o un bebedero más antes del calor")
+                if evento["nivel"] == "moderado":
+                    evento["nivel"] = "critico"
+                    notas.append("sube a crítico porque la reposición del bebedero no alcanza")
         txt_ag = ""
         if ag:
             txt_ag = (f" Con {_n(evento.get('tmax'))} °C el lote toma unos {_n(ag['l_dia'])} L/día "
@@ -299,3 +309,21 @@ def agua_lote(animales, peso_kg, temp_c, reserva_l=None, ms_kg=None,
     if r and total > 0:
         out["horas_reserva"] = r / (total / 24)
     return out
+
+
+def caudal_requerido(animales, peso_kg, l_dia_estimado=None, verano=True) -> Optional[Dict]:
+    """Reposición que necesita el bebedero (L/min) para reponer el agua
+    del día en 4 horas: MLA, Feedlot design and construction, sección 14
+    ("supply at least the daily peak consumption in a four-hour period") y
+    UNL NebGuide G2266 (2015, "within a four-hour period"). Para el
+    consumo pico se toma el mayor entre lo estimado y los 70 L por animal
+    por día que pide el INTA en verano (Pordomingo 2003)."""
+    n = _f(animales)
+    if not n:
+        return None
+    dia = _f(l_dia_estimado) or 0
+    if verano:
+        dia = max(dia, 70 * n)
+    if dia <= 0:
+        return None
+    return {"l_dia_pico": dia, "l_min": dia / (4 * 60)}

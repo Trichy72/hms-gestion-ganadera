@@ -336,6 +336,64 @@ def dialog_entrevista(lote_id: int):
         _refrescar()
 
 
+# ---------------------------------------------------------------------
+# Agenda: actividades que carga Mauri (llamar, visitar, recordatorios)
+# ---------------------------------------------------------------------
+TIPOS_ACTIVIDAD = {"Llamado": "llamado", "Visita": "visita", "Recordatorio": "tarea"}
+
+
+def _ensure_agenda() -> None:
+    if db._usando_postgres():
+        return  # la tabla se creó en Supabase
+    with db.get_conn() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS agenda (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
+            tipo TEXT NOT NULL DEFAULT 'tarea', cliente_id INTEGER, titulo TEXT NOT NULL,
+            hecho INTEGER NOT NULL DEFAULT 0, creado TEXT)""")
+
+
+def listar_agenda(desde: str, hasta: str) -> List[Dict]:
+    try:
+        _ensure_agenda()
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT a.*, c.nombre AS cliente FROM agenda a LEFT JOIN clientes c ON c.id = a.cliente_id "
+                "WHERE a.fecha >= ? AND a.fecha <= ? ORDER BY a.fecha, a.id", (desde, hasta)).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def marcar_actividad(act_id: int, hecho: bool) -> None:
+    with db.get_conn() as conn:
+        conn.execute("UPDATE agenda SET hecho = ? WHERE id = ?", (1 if hecho else 0, act_id))
+
+
+def borrar_actividad(act_id: int) -> None:
+    with db.get_conn() as conn:
+        conn.execute("DELETE FROM agenda WHERE id = ?", (act_id,))
+
+
+@st.dialog("Agregar actividad")
+def dialog_actividad(fecha_inicial: Optional[date] = None):
+    clientes = [c for c in (db.listar_clientes() or []) if c.get("activo", 1) not in (0, False)]
+    ops_cli = {"Sin cliente": None} | {c["nombre"]: c["id"] for c in clientes}
+    with st.form("f_actividad"):
+        tipo = st.radio("Qué es", list(TIPOS_ACTIVIDAD), horizontal=True)
+        cli = st.selectbox("Cliente", list(ops_cli))
+        f = st.date_input("Fecha", value=fecha_inicial or date.today(), format="DD/MM/YYYY")
+        txt = st.text_input("Qué hay que hacer", placeholder="Ej.: llamar para ver cómo vienen comiendo")
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        titulo = txt.strip() or tipo.lower()
+        _ensure_agenda()
+        with db.get_conn() as conn:
+            conn.execute("INSERT INTO agenda (fecha, tipo, cliente_id, titulo, hecho, creado) VALUES (?, ?, ?, ?, 0, ?)",
+                          (_iso(f), TIPOS_ACTIVIDAD[tipo], ops_cli[cli], titulo, _iso(date.today())))
+        st.success("Guardado. Aparece en el calendario y, el día que toca, en Para hoy.")
+        _refrescar()
+
+
 @st.dialog("Datos del cliente")
 def dialog_cliente(cliente_id: Optional[int] = None):
     c = db.obtener_cliente(cliente_id) if cliente_id else {}

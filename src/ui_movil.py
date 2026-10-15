@@ -486,6 +486,24 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             tareas.append(("var(--hm-chip)", "var(--hm-sub)", "📋",
                            f"{d['cliente']} · falta la entrevista inicial", ""))
 
+    # Lo que cargó Mauri a mano para hoy (o atrasado y sin hacer)
+    try:
+        from . import ui_gestion as _g
+        for a in _g.listar_agenda((hoy - timedelta(days=30)).isoformat(), hoy.isoformat()):
+            if a.get("hecho"):
+                continue
+            fa = _fecha(a.get("fecha"))
+            tipo = a.get("tipo") or "tarea"
+            ico = _CAL_TIPOS.get(tipo, _CAL_TIPOS["tarea"])[0]
+            quien = a.get("cliente") or "Recordatorio"
+            atraso = f" Era para el {_dm(fa)}." if fa and fa < hoy else ""
+            tareas.append(("#FBE3E1" if tipo == "tarea" else "#E3ECF7",
+                           "#B42318" if tipo == "tarea" else "#1F6FB2", ico,
+                           f"{quien} · {_TXT_ACT.get(tipo, tipo)}",
+                           f"{a.get('titulo') or ''}.{atraso} Se marca hecho en el calendario."))
+    except Exception as e:
+        log.info("ui_movil: agenda hoy: %s", e)
+
     # Clima: eventos de frío o calor de los próximos días en el campo de
     # cada cliente, con el motivo y qué hacer según el comedero del lote.
     try:
@@ -518,7 +536,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     # Orden por urgencia y avisos agrupados (con muchos clientes no se repiten)
     sin_wa = [t for t in tareas if t[2] == "☎"]
     tareas = [t for t in tareas if t[2] != "☎"]
-    prio = {"!": 0, "↓": 1, "⚖": 2, "✓": 4}
+    prio = {"!": 0, "📲": 0.5, "🚗": 0.5, "📌": 0.5, "↓": 1, "⚖": 2, "✓": 4}
     tareas.sort(key=lambda t: prio.get(t[2], 3))
     # Muchos del mismo tipo: una sola tarjeta con la lista
     for ico, titulo in (("↓", "Pedir alimento"), ("⚖", "Pesada mensual")):
@@ -680,7 +698,11 @@ _CAL_TIPOS = {
     "control":  ("📋", "#2E7D32", "Control respondido"),
     "salida":   ("🏁", "#1B4332", "Salida estimada"),
     "clima":    ("🌡", "#C62828", "Clima"),
+    "llamado":  ("📲", "#1F6FB2", "Llamar"),
+    "visita":   ("🚗", "#8A5A00", "Visita"),
+    "tarea":    ("📌", "#B42318", "Recordatorio"),
 }
+_TXT_ACT = {"llamado": "llamar", "visita": "visita", "tarea": "recordatorio"}
 
 
 def _eventos_mes(datos: List[Dict], y: int, m: int, hoy: date) -> Dict[date, List[tuple]]:
@@ -725,6 +747,16 @@ def _eventos_mes(datos: List[Dict], y: int, m: int, hoy: date) -> Dict[date, Lis
         if d.get("salida"):
             add(d["salida"], "salida", f"{cli} · salida ({_num(d.get('peso_venta'), 0)} kg)")
 
+    # Lo que cargó Mauri a mano (llamar, visitar, recordatorios)
+    try:
+        from . import ui_gestion as _g
+        for a in _g.listar_agenda(ini.isoformat(), fin.isoformat()):
+            quien = a.get("cliente") or ""
+            txt = (f"{quien} · " if quien else "") + str(a.get("titulo") or "")
+            add(_fecha(a.get("fecha")), a.get("tipo") or "tarea", ("✓ " if a.get("hecho") else "") + txt)
+    except Exception as e:
+        log.info("ui_movil: agenda: %s", e)
+
     # Clima de la zona (Catriló): días con estrés moderado o crítico
     try:
         info = _clima_localidad("Catriló, La Pampa")
@@ -750,7 +782,10 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
     nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
                "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
-    c1, c2, c3, c4 = st.columns([3, 1, 1, 1], vertical_alignment="center")
+    c1, c0, c2, c3, c4 = st.columns([2.4, 1.3, 1, 1, 1], vertical_alignment="center")
+    if c0.button("＋ Agregar actividad", key=f"{key}_add", type="primary", width="stretch"):
+        from . import ui_gestion as _g
+        _g.dialog_actividad()
     c1.markdown(f'<div class="hm"><div class="hm-lbl" style="margin:0">CALENDARIO · '
                 f'{nombres[m - 1].upper()} {y}</div></div>', unsafe_allow_html=True)
     if c2.button("◀ Anterior", key=f"{key}_a", width="stretch"):
@@ -777,7 +812,7 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
             chips = ""
             evs = ev.get(dia, []) if not fuera else []
             for tipo, txt in evs[:3]:
-                ico, col, _ = _CAL_TIPOS[tipo]
+                ico, col, _ = _CAL_TIPOS.get(tipo, _CAL_TIPOS["tarea"])
                 pasado = ' style="opacity:.6"' if dia < hoy else ""
                 chips += (f'<div class="hm-cal-ev"{pasado}><span style="color:{col}">{ico}</span> '
                           f'{_e(txt)}</div>')
@@ -790,7 +825,7 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
         if dia < hoy and m == hoy.month and y == hoy.year:
             continue
         for tipo, txt in ev[dia]:
-            ico, col, _ = _CAL_TIPOS[tipo]
+            ico, col, _ = _CAL_TIPOS.get(tipo, _CAL_TIPOS["tarea"])
             lista += (f'<div class="hm-ag"><div class="d">{_dia_corto(dia)}/{dia.month}</div>'
                       f'<div><span style="color:{col}">{ico}</span> {_e(txt)}</div></div>')
     if not lista:
@@ -802,6 +837,34 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
         f'<div class="hm-cal-lista">{lista}</div>'
         f'<div class="hm-sub" style="margin-top:8px">{ley}</div></div></div>',
         unsafe_allow_html=True)
+    _mis_actividades(y, m, hoy, key)
+
+
+def _mis_actividades(y: int, m: int, hoy: date, key: str) -> None:
+    """Lo cargado a mano en el mes, para marcarlo hecho o borrarlo."""
+    import calendar as _cal
+    from . import ui_gestion as _g
+    acts = _g.listar_agenda(date(y, m, 1).isoformat(), date(y, m, _cal.monthrange(y, m)[1]).isoformat())
+    if not acts:
+        return
+    pend = sum(1 for a in acts if not a.get("hecho"))
+    with st.expander(f"Actividades que cargaste este mes · {pend} pendiente{'s' if pend != 1 else ''}"):
+        for a in acts:
+            f = _fecha(a.get("fecha"))
+            ico = _CAL_TIPOS.get(a.get("tipo") or "tarea", _CAL_TIPOS["tarea"])[0]
+            quien = a.get("cliente") or ""
+            txt = f"{ico} **{_dia_corto(f)} {f.day}/{f.month}** · " if f else ""
+            txt += (f"{quien} · " if quien else "") + str(a.get("titulo") or "")
+            if a.get("hecho"):
+                txt = f"~~{txt}~~ ✓"
+            c1, c2, c3 = st.columns([6, 1.3, 1], vertical_alignment="center")
+            c1.markdown(txt)
+            if c2.button("Pendiente" if a.get("hecho") else "✓ Hecho", key=f"{key}_ok_{a['id']}", width="stretch"):
+                _g.marcar_actividad(a["id"], not a.get("hecho"))
+                st.rerun()
+            if c3.button("Borrar", key=f"{key}_del_{a['id']}", width="stretch"):
+                _g.borrar_actividad(a["id"])
+                st.rerun()
 
 
 def _precio_kg(e: Dict) -> Optional[float]:

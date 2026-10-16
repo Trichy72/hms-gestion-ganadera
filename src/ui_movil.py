@@ -613,13 +613,16 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     col_a = st.container()
     with col_a:
         if tareas:
+            from . import contacto as _ct
+
             def _html_tareas(ts):
                 h = ""
                 for bg, fg, ico, tit, sub in ts:
                     h += (
                         f'<div class="hm-card"><div class="hm-row">'
-                        f'<div class="hm-ico" style="background:{bg};color:{fg}">{_e(ico)}</div>'
-                        f'<div><div class="hm-h">{_e(tit)}</div>'
+                        + (_ct.icono(_ct.clave_de_emoji(ico)) if _ct.clave_de_emoji(ico) else
+                           f'<div class="hm-ico" style="background:{bg};color:{fg}">{_e(ico)}</div>')
+                        + f'<div><div class="hm-h">{_e(tit)}</div>'
                         f'<div class="hm-sub">{_e(sub)}</div></div></div></div>'
                     )
                 return h
@@ -776,6 +779,7 @@ def _eventos_mes(datos: List[Dict], y: int, m: int, hoy: date) -> Dict[date, Lis
 
 def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
     import calendar as _cal
+    from . import contacto as _ct
     key = f"{kp}_cal_mes"
     off = st.session_state.get(key, 0)
     y, m = hoy.year, hoy.month + off
@@ -817,6 +821,7 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
             evs = ev.get(dia, []) if not fuera else []
             for tipo, txt in evs[:3]:
                 ico, col, _ = _CAL_TIPOS.get(tipo, _CAL_TIPOS["tarea"])
+                ico = _ct.svg(tipo, 14) or ico
                 pasado = ' style="opacity:.6"' if dia < hoy else ""
                 chips += (f'<div class="hm-cal-ev"{pasado}><span style="color:{col}">{ico}</span> '
                           f'{_e(txt)}</div>')
@@ -830,11 +835,12 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
             continue
         for tipo, txt in ev[dia]:
             ico, col, _ = _CAL_TIPOS.get(tipo, _CAL_TIPOS["tarea"])
+            ico = _ct.svg(tipo, 15) or ico
             lista += (f'<div class="hm-ag"><div class="d">{_dia_corto(dia)}/{dia.month}</div>'
                       f'<div><span style="color:{col}">{ico}</span> {_e(txt)}</div></div>')
     if not lista:
         lista = '<div class="hm-sub">Sin actividades.</div>'
-    ley = " · ".join(f'<span style="color:{c}">{i}</span> {n}' for i, c, n in _CAL_TIPOS.values())
+    ley = " · ".join(f'<span style="color:{c}">{_ct.svg(k, 14) or i}</span> {n}' for k, (i, c, n) in _CAL_TIPOS.items())
     st.markdown(
         f'<div class="hm"><div class="hm-card">'
         f'<table class="hm-cal"><tr>{cab}</tr>{filas}</table>'
@@ -855,14 +861,16 @@ def _mis_actividades(y: int, m: int, hoy: date, key: str) -> None:
     with st.expander(f"Actividades que cargaste este mes · {pend} pendiente{'s' if pend != 1 else ''}"):
         for a in acts:
             f = _fecha(a.get("fecha"))
-            ico = _CAL_TIPOS.get(a.get("tipo") or "tarea", _CAL_TIPOS["tarea"])[0]
+            from . import contacto as _ct
             quien = a.get("cliente") or ""
-            txt = f"{ico} **{_dia_corto(f)}/{f.month}** · " if f else ""
-            txt += (f"{quien} · " if quien else "") + str(a.get("titulo") or "")
+            txt = f"<b>{_dia_corto(f)}/{f.month}</b> · " if f else ""
+            txt += _e((f"{quien} · " if quien else "") + str(a.get("titulo") or ""))
             if a.get("hecho"):
-                txt = f"~~{txt}~~ ✓"
+                txt = f'<s style="opacity:.6">{txt}</s> ✓'
             c1, c2, c3 = st.columns([6, 1.3, 1], vertical_alignment="center")
-            c1.markdown(txt)
+            c1.markdown(f'<div style="display:flex;align-items:center;gap:10px">'
+                        f'{_ct.icono(a.get("tipo") or "tarea", 30)}<div>{txt}</div></div>',
+                        unsafe_allow_html=True)
             if c2.button("Pendiente" if a.get("hecho") else "✓ Hecho", key=f"{key}_ok_{a['id']}", width="stretch"):
                 _g.marcar_actividad(a["id"], not a.get("hecho"))
                 st.rerun()
@@ -1539,8 +1547,11 @@ def _seccion_charlas(lote: Dict, d: Dict, kp: str) -> None:
         f = _fecha(c.get("fecha"))
         ac = (f'<div class="hm-nota" style="margin-top:6px"><b>Se acordó:</b> {_e(c.get("acuerdos"))}</div>'
               if c.get("acuerdos") else "")
-        return (f'<div class="hm-card"><div class="hm-sub" style="margin-bottom:4px">'
-                f'{_MEDIO_ICO.get(c.get("medio"), "💬")} <b>{_dia_corto(f)}/{f.month}</b> · {_e(c.get("medio") or "")}</div>'
+        from . import contacto as _ct
+        k = _ct.clave_de_emoji(_MEDIO_ICO.get(c.get("medio"), ""))
+        ico = _ct.icono(k, 28) if k else _MEDIO_ICO.get(c.get("medio"), "💬")
+        return (f'<div class="hm-card"><div class="hm-sub" style="margin-bottom:6px;display:flex;align-items:center;gap:8px">'
+                f'{ico} <span><b>{_dia_corto(f)}/{f.month}</b> · {_e(c.get("medio") or "")}</span></div>'
                 f'<div style="white-space:pre-wrap">{_e(c.get("resumen"))}</div>{ac}</div>')
     st.markdown('<div class="hm">' + "".join(_una(c) for c in ch[:3]) + '</div>', unsafe_allow_html=True)
     if len(ch) > 3:

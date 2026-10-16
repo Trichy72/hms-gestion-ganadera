@@ -354,7 +354,8 @@ def dialog_entrevista(lote_id: int):
 # el semáforo lo pide, visita técnica (incluida o con cargo), entrevista.
 # (clave, nombre, ícono, color, cómo se lee en "Para hoy")
 from .contacto import TIPOS_CONTACTO  # noqa: E402
-TIPOS_ACTIVIDAD = {f"{ico} {nom}": k for k, nom, ico, _, _ in TIPOS_CONTACTO}
+from .contacto import MATERIAL as _MAT  # noqa: E402
+TIPOS_ACTIVIDAD = {f"{_MAT[k]} {nom}": k for k, nom, ico, _, _ in TIPOS_CONTACTO}
 _ICO_CONTACTO = {k: ico for k, _, ico, _, _ in TIPOS_CONTACTO}
 
 
@@ -413,7 +414,8 @@ def dialog_actividad(fecha_inicial: Optional[date] = None):
 # ---------------------------------------------------------------------
 # Charlas con el cliente: qué se habló y qué se acordó
 # ---------------------------------------------------------------------
-MEDIOS_CHARLA = [f"{ico} {nom}" for k, nom, ico, _, _ in TIPOS_CONTACTO if k != "tarea"] + ["🤝 En persona (otro lugar)"]
+MEDIOS_CHARLA = [f"{_MAT[k]} {nom}" for k, nom, ico, _, _ in TIPOS_CONTACTO if k != "tarea"] + [
+    ":material/handshake: En persona (otro lugar)"]
 
 
 def _ensure_charlas() -> None:

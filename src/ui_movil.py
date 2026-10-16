@@ -499,8 +499,8 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
             ico = _CAL_TIPOS.get(tipo, _CAL_TIPOS["tarea"])[0]
             quien = a.get("cliente") or "Recordatorio"
             atraso = f" Era para el {_dm(fa)}." if fa and fa < hoy else ""
-            tareas.append(("#FBE3E1" if tipo == "tarea" else "#E3ECF7",
-                           "#B42318" if tipo == "tarea" else "#1F6FB2", ico,
+            col = _COL_ACT.get(tipo, "#1F6FB2")
+            tareas.append((col + "22", col, ico,
                            f"{quien} · {_TXT_ACT.get(tipo, tipo)}",
                            f"{a.get('titulo') or ''}.{atraso} Se marca hecho en el calendario."))
     except Exception as e:
@@ -538,7 +538,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     # Orden por urgencia y avisos agrupados (con muchos clientes no se repiten)
     sin_wa = [t for t in tareas if t[2] == "☎"]
     tareas = [t for t in tareas if t[2] != "☎"]
-    prio = {"!": 0, "📲": 0.5, "🚗": 0.5, "📌": 0.5, "↓": 1, "⚖": 2, "✓": 4}
+    prio = {"!": 0, "↓": 1, "⚖": 2, "✓": 4} | {_ico: 0.5 for _, _, _ico, _, _ in _TC}
     tareas.sort(key=lambda t: prio.get(t[2], 3))
     # Muchos del mismo tipo: una sola tarjeta con la lista
     for ico, titulo in (("↓", "Pedir alimento"), ("⚖", "Pesada mensual")):
@@ -700,11 +700,13 @@ _CAL_TIPOS = {
     "control":  ("📋", "#2E7D32", "Control respondido"),
     "salida":   ("🏁", "#1B4332", "Salida estimada"),
     "clima":    ("🌡", "#C62828", "Clima"),
-    "llamado":  ("📲", "#1F6FB2", "Llamar"),
-    "visita":   ("🚗", "#8A5A00", "Visita"),
-    "tarea":    ("📌", "#B42318", "Recordatorio"),
 }
-_TXT_ACT = {"llamado": "llamar", "visita": "visita", "tarea": "recordatorio"}
+# Tipos de contacto con el cliente (los mismos de la agenda y las charlas)
+from .contacto import TIPOS_CONTACTO as _TC  # noqa: E402
+for _k, _nom, _ico, _col, _ in _TC:
+    _CAL_TIPOS[_k] = (_ico, _col, _nom)
+_TXT_ACT = {k: v for k, _, _, _, v in _TC}
+_COL_ACT = {k: c for k, _, _, c, _ in _TC}
 
 
 def _eventos_mes(datos: List[Dict], y: int, m: int, hoy: date) -> Dict[date, List[tuple]]:
@@ -1517,7 +1519,7 @@ def _armar_informe(lote: Dict, d: Dict) -> str:
     return texto
 
 
-_MEDIO_ICO = {"Llamado": "📲", "Visita al campo": "🚗", "WhatsApp": "💬", "En persona (otro lugar)": "🤝"}
+_MEDIO_ICO = {nom: ico for _, nom, ico, _, _ in _TC} | {"Visita al campo": "🚗", "En persona (otro lugar)": "🤝"}
 
 
 def _seccion_charlas(lote: Dict, d: Dict, kp: str) -> None:

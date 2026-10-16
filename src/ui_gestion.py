@@ -350,7 +350,12 @@ def dialog_entrevista(lote_id: int):
 # ---------------------------------------------------------------------
 # Agenda: actividades que carga Mauri (llamar, visitar, recordatorios)
 # ---------------------------------------------------------------------
-TIPOS_ACTIVIDAD = {"Llamado": "llamado", "Visita": "visita", "Recordatorio": "tarea"}
+# Política de contacto con el cliente: WhatsApp de rutina, llamado cuando
+# el semáforo lo pide, visita técnica (incluida o con cargo), entrevista.
+# (clave, nombre, ícono, color, cómo se lee en "Para hoy")
+from .contacto import TIPOS_CONTACTO  # noqa: E402
+TIPOS_ACTIVIDAD = {f"{ico} {nom}": k for k, nom, ico, _, _ in TIPOS_CONTACTO}
+_ICO_CONTACTO = {k: ico for k, _, ico, _, _ in TIPOS_CONTACTO}
 
 
 def _ensure_agenda() -> None:
@@ -390,7 +395,7 @@ def dialog_actividad(fecha_inicial: Optional[date] = None):
     clientes = [c for c in (db.listar_clientes() or []) if c.get("activo", 1) not in (0, False)]
     ops_cli = {"Sin cliente": None} | {c["nombre"]: c["id"] for c in clientes}
     with st.form("f_actividad"):
-        tipo = st.radio("Qué es", list(TIPOS_ACTIVIDAD), horizontal=True)
+        tipo = st.radio("Tipo de contacto", list(TIPOS_ACTIVIDAD), horizontal=True)
         cli = st.selectbox("Cliente", list(ops_cli))
         f = st.date_input("Fecha", value=fecha_inicial or date.today(), format="DD/MM/YYYY")
         txt = st.text_input("Qué hay que hacer", placeholder="Ej.: llamar para ver cómo vienen comiendo")
@@ -408,7 +413,7 @@ def dialog_actividad(fecha_inicial: Optional[date] = None):
 # ---------------------------------------------------------------------
 # Charlas con el cliente: qué se habló y qué se acordó
 # ---------------------------------------------------------------------
-MEDIOS_CHARLA = ["Llamado", "Visita al campo", "WhatsApp", "En persona (otro lugar)"]
+MEDIOS_CHARLA = [f"{ico} {nom}" for k, nom, ico, _, _ in TIPOS_CONTACTO if k != "tarea"] + ["🤝 En persona (otro lugar)"]
 
 
 def _ensure_charlas() -> None:
@@ -451,9 +456,10 @@ def dialog_charla(lote_id: int):
         acuerdos = st.text_area("Qué se acordó (opcional)", height=80,
                                 placeholder="Ej.: bajar 0,5 kg la carga de la mañana y avisar el viernes.")
         st.markdown("**Próximo paso (opcional)**: se agrega al calendario.")
-        c3, c4 = st.columns([1, 2])
+        c3, c7, c4 = st.columns([1, 1.2, 2])
         sigue = c3.date_input("Para el", value=None, format="DD/MM/YYYY")
-        sigue_txt = c4.text_input("Qué hacer", placeholder="Ej.: llamar para ver si mejoró")
+        sigue_tipo = c7.selectbox("Cómo", list(TIPOS_ACTIVIDAD), index=1)
+        sigue_txt = c4.text_input("Qué hacer", placeholder="Ej.: ver si mejoró la bosta")
         from . import control_semanal as cs
         c5, c6 = st.columns([1, 2])
         tema_f = c5.selectbox("Fotos de", list(cs.TEMAS_TODOS.values()), index=0)
@@ -468,14 +474,14 @@ def dialog_charla(lote_id: int):
         with db.get_conn() as conn:
             conn.execute("INSERT INTO charlas (fecha, cliente_id, lote_id, medio, resumen, acuerdos, creado) "
                          "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                         (_iso(f), l.get("cliente_id"), lote_id, medio, resumen.strip(),
+                         (_iso(f), l.get("cliente_id"), lote_id, medio.split(" ", 1)[1], resumen.strip(),
                           acuerdos.strip() or None, _iso(date.today())))
         if sigue:
             _ensure_agenda()
             with db.get_conn() as conn:
                 conn.execute("INSERT INTO agenda (fecha, tipo, cliente_id, titulo, hecho, creado) "
-                             "VALUES (?, 'llamado', ?, ?, 0, ?)",
-                             (_iso(sigue), l.get("cliente_id"), sigue_txt.strip() or "seguimiento de la charla",
+                             "VALUES (?, ?, ?, ?, 0, ?)",
+                             (_iso(sigue), TIPOS_ACTIVIDAD[sigue_tipo], l.get("cliente_id"), sigue_txt.strip() or "seguimiento de la charla",
                               _iso(date.today())))
         if ups:
             tema_k = next((k for k, v in cs.TEMAS_TODOS.items() if v == tema_f), "otra")

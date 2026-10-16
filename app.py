@@ -1796,17 +1796,37 @@ try:
     if _fp.exists():
         _foto = _b64_fr.b64encode(_fp.read_bytes()).decode()
         _css_franja_hdr = (
-            "<style>.hms-franja{border-radius:0 0 18px 18px;color:#fff;min-height:270px;align-items:center !important;"
+            "<style>.hms-franja{border-radius:0 0 18px 18px;color:#fff;min-height:340px;align-items:flex-start !important;"
             "margin:-4.6rem calc(-1 * var(--hp)) 14px !important;"
-            "padding:calc(4.6rem + 6px) calc(var(--hp) + 1.4rem) 22px !important;background:"
+            "padding:calc(4.6rem - 8px) calc(var(--hp) + 1.4rem) 96px !important;background:"
             "linear-gradient(90deg,rgba(20,48,29,.80) 0%,rgba(20,48,29,.30) 30%,rgba(20,48,29,.05) 55%,rgba(20,48,29,.45) 100%),"
             "linear-gradient(0deg,rgba(20,48,29,.35) 0%,rgba(20,48,29,0) 40%),"
-            f"url(data:image/jpeg;base64,{_foto}) center 18%/cover no-repeat}}"
-            "@media (min-width:1500px){.hms-franja{min-height:300px}}"
+            f"url(data:image/jpeg;base64,{_foto}) center 40%/cover no-repeat}}"
+            "@media (min-width:1500px){.hms-franja{min-height:390px}}"
+            # Pestañas principales (Inicio, Clientes, Más) metidas abajo de la foto
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"]'
+            "{margin-top:-104px;position:relative;z-index:3}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"])'
+            "{display:inline-flex !important;width:fit-content !important;max-width:100%;margin-left:1.4rem;margin-bottom:34px;"
+            "background:rgba(16,40,24,.45) !important;border:1px solid rgba(255,255,255,.22) !important;"
+            "backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px !important;box-shadow:none !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"]:not([aria-selected="true"])'
+            "{color:#fff !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"]:not([aria-selected="true"]) *'
+            "{color:#fff !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"][aria-selected="true"]'
+            "{background:#fff !important;box-shadow:0 2px 8px rgba(0,0,0,.25) !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"][aria-selected="true"] *'
+            "{color:#1B3E27 !important}"
             '[data-testid="stHeader"]{background:transparent !important}'
             '[data-testid="stHeader"] *{color:#fff !important}'
             '[data-testid="stHeader"] button,[data-testid="stHeader"] a{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}'
-            ".hms-franja img{height:76px !important;max-width:280px !important}"
+            ".hms-franja img{height:98px !important;max-width:340px !important}"
             ".hms-franja .hm-hc{background:rgba(255,255,255,.14) !important;color:#fff;"
             "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}"
             ".hms-franja .hm-hc:hover,.hms-franja .hm-hc:focus{background:rgba(255,255,255,.26) !important}"
@@ -1817,7 +1837,11 @@ try:
             "margin-top:-4.6rem !important;padding:calc(4.6rem + 2px) calc(var(--hp) + .6rem) 16px !important;background:"
             "linear-gradient(180deg,rgba(20,48,29,.75) 0%,rgba(20,48,29,.25) 45%,rgba(20,48,29,.80) 100%),"
             f"url(data:image/jpeg;base64,{_foto}) 60% 30%/cover no-repeat}}"
-            ".hms-franja .hm-hw{margin-top:70px}.hms-franja img{height:56px !important}}}"
+            ".hms-franja .hm-hw{margin-top:60px}.hms-franja img{height:60px !important}"
+            ".hms-franja{padding-bottom:84px !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"]{margin-top:-92px}'
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]){margin-left:.6rem}}'
             "</style>")
         if _lb.exists():
             _logo_franja_hdr = (

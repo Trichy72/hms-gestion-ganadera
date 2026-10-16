@@ -1758,22 +1758,28 @@ try:
     if _fp.exists():
         _foto = _b64_fr.b64encode(_fp.read_bytes()).decode()
         _css_franja_hdr = (
-            "<style>.hms-franja{border-radius:16px;color:#fff;min-height:200px;align-items:flex-start !important;"
-            "padding:20px 22px !important;background:"
+            "<style>.hms-franja{border-radius:0 0 18px 18px;color:#fff;min-height:270px;align-items:center !important;"
+            "margin:-4.6rem calc(-1 * var(--hp)) 14px !important;"
+            "padding:calc(4.6rem + 6px) calc(var(--hp) + 1.4rem) 22px !important;background:"
             "linear-gradient(90deg,rgba(20,48,29,.80) 0%,rgba(20,48,29,.30) 30%,rgba(20,48,29,.05) 55%,rgba(20,48,29,.45) 100%),"
             "linear-gradient(0deg,rgba(20,48,29,.35) 0%,rgba(20,48,29,0) 40%),"
-            f"url(data:image/jpeg;base64,{_foto}) center 34%/cover no-repeat}}"
-            "@media (min-width:1500px){.hms-franja{min-height:235px}}"
+            f"url(data:image/jpeg;base64,{_foto}) center 18%/cover no-repeat}}"
+            "@media (min-width:1500px){.hms-franja{min-height:300px}}"
+            '[data-testid="stHeader"]{background:transparent !important}'
+            '[data-testid="stHeader"] *{color:#fff !important}'
+            '[data-testid="stHeader"] button,[data-testid="stHeader"] a{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}'
+            ".hms-franja img{height:76px !important;max-width:280px !important}"
             ".hms-franja .hm-hc{background:rgba(255,255,255,.14) !important;color:#fff;"
             "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}"
             ".hms-franja .hm-hc:hover,.hms-franja .hm-hc:focus{background:rgba(255,255,255,.26) !important}"
             ".hms-franja .hm-hc-d,.hms-franja .hm-hc-m{opacity:.85}"
             ".hms-franja .hm-ha{border-right-color:rgba(255,255,255,.35) !important;color:#fff}"
             ".hms-franja .hm-hv{color:#fff;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.4)}"
-            "@media (max-width:760px){.hms-franja{min-height:0;background:"
+            "@media (max-width:760px){.hms-franja{min-height:0;border-radius:0 0 14px 14px;"
+            "margin-top:-4.6rem !important;padding:calc(4.6rem + 2px) calc(var(--hp) + .6rem) 16px !important;background:"
             "linear-gradient(180deg,rgba(20,48,29,.75) 0%,rgba(20,48,29,.25) 45%,rgba(20,48,29,.80) 100%),"
-            f"url(data:image/jpeg;base64,{_foto}) 60% 45%/cover no-repeat}}"
-            ".hms-franja .hm-hw{margin-top:90px}}}"
+            f"url(data:image/jpeg;base64,{_foto}) 60% 30%/cover no-repeat}}"
+            ".hms-franja .hm-hw{margin-top:70px}.hms-franja img{height:56px !important}}}"
             "</style>")
         if _lb.exists():
             _logo_franja_hdr = (
@@ -1791,13 +1797,12 @@ except Exception:
 
 st.markdown(
     '<style>'
-    '.block-container{padding-top:3.4rem !important;}'
-    '@media (min-width:900px){.block-container{max-width:100% !important;'
-    'padding-left:2.2rem !important;padding-right:2.2rem !important;}}'
+    '.block-container{padding-top:3.4rem !important;--hp:1.2rem;max-width:100% !important;'
+    'padding-left:var(--hp) !important;padding-right:var(--hp) !important;}'
+    '@media (min-width:900px){.block-container{--hp:2.2rem}}'
     '[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],'
     '[data-testid="stExpandSidebarButton"]{display:none !important;}'
-    '@media (max-width:640px){.block-container{padding-left:.8rem !important;'
-    'padding-right:.8rem !important;}}'
+    '@media (max-width:640px){.block-container{--hp:.8rem}}'
     '</style>'
     + _css_franja_hdr +
     f'<div class="hms-franja" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;'

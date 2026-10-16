@@ -1503,16 +1503,54 @@ def _acceso_ok() -> bool:
         st.session_state["_acceso_ok"] = True
         return True
 
-    _col_login = st.columns([1, 2.2, 1])[1]
+    # Pantalla de entrada: la foto del campo a pantalla completa, con el
+    # logo, la frase de HMS y la clave encima.
+    try:
+        import base64 as _b64l
+        _fl = Path("assets/portada.jpg")
+        _lgl = Path("assets/logo_blanco.png")
+        if _fl.exists():
+            _fb = _b64l.b64encode(_fl.read_bytes()).decode()
+            st.markdown(
+                "<style>@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700&display=swap');"
+                '[data-testid="stForm"] input{background:#EEF0EC !important;border-radius:8px}'
+                '[data-testid="stForm"] [data-baseweb="input"]{background:#EEF0EC !important;border:1px solid #D5DBD1 !important;border-radius:8px}'
+                '[data-testid="stApp"],[data-testid="stAppViewContainer"]{background:'
+                "linear-gradient(90deg,rgba(18,44,27,.88) 0%,rgba(18,44,27,.62) 38%,rgba(18,44,27,.15) 70%,rgba(18,44,27,.05) 100%),"
+                f"url(data:image/jpeg;base64,{_fb}) 60% 30%/cover no-repeat fixed !important}}"
+                '[data-testid="stHeader"]{background:transparent !important}'
+                '[data-testid="stHeader"] *{color:#fff !important}'
+                ".block-container{padding-top:12vh !important}"
+                '[data-testid="stForm"]{background:rgba(255,255,255,.94);border:none !important;'
+                "border-radius:16px;padding:22px 22px 18px !important;box-shadow:0 12px 40px rgba(0,0,0,.35)}"
+                ".hms-acc{color:#fff;margin:0 0 22px}"
+                ".hms-acc .f{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:34px;"
+                "line-height:1.02;letter-spacing:.3px;margin-top:18px;text-transform:uppercase;"
+                "text-shadow:0 2px 6px rgba(0,0,0,.35)}"
+                ".hms-acc .f span{color:#8BC53F}"
+                ".hms-acc .r{width:64px;height:3px;background:#8BC53F;margin-top:16px;border-radius:2px}"
+                "@media (max-width:640px){"
+                '[data-testid="stApp"],[data-testid="stAppViewContainer"]{background:'
+                "linear-gradient(180deg,rgba(18,44,27,.80) 0%,rgba(18,44,27,.55) 50%,rgba(18,44,27,.80) 100%),"
+                f"url(data:image/jpeg;base64,{_fb}) 62% 30%/cover no-repeat !important}}"
+                ".block-container{padding-top:8vh !important}.hms-acc .f{font-size:28px}}"
+                "</style>", unsafe_allow_html=True)
+            _logo_l = ('<img src="data:image/png;base64,' + _b64l.b64encode(_lgl.read_bytes()).decode()
+                       + '" style="height:72px;width:auto;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))"/>'
+                       ) if _lgl.exists() else '<div style="font-size:40px;font-weight:800">HMS</div>'
+    except Exception:
+        _fl = None
+    _col_login = st.columns([1.1, 1.3, 2.2])[1] if _fl is not None and _fl.exists() else st.columns([1, 2.2, 1])[1]
     with _col_login:
-        if Path("assets/banner.jpg").exists():
-            st.image("assets/banner.jpg", width="stretch")
-            st.markdown("#### Entrar al sistema")
+        if _fl is not None and _fl.exists():
+            st.markdown(f'<div class="hms-acc">{_logo_l}<div class="r"></div>'
+                        f'<div class="f">Nutrición<br>que se nota<br><span>en la balanza</span></div></div>',
+                        unsafe_allow_html=True)
         else:
             st.markdown("### 🔒 HMS Nutrición Animal")
         with st.form("form_acceso"):
             _clave = st.text_input("Clave de acceso", type="password")
-            _entrar = st.form_submit_button("Entrar")
+            _entrar = st.form_submit_button("Entrar", type="primary", width="stretch")
     if _entrar:
         try:
             _salt_hex, _hash_hex = _hash_guardado.split("$", 1)

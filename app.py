@@ -1758,12 +1758,12 @@ try:
     if _fp.exists():
         _foto = _b64_fr.b64encode(_fp.read_bytes()).decode()
         _css_franja_hdr = (
-            "<style>.hms-franja{border-radius:16px;color:#fff;min-height:250px;align-items:flex-start !important;"
+            "<style>.hms-franja{border-radius:16px;color:#fff;min-height:200px;align-items:flex-start !important;"
             "padding:20px 22px !important;background:"
             "linear-gradient(90deg,rgba(20,48,29,.80) 0%,rgba(20,48,29,.30) 30%,rgba(20,48,29,.05) 55%,rgba(20,48,29,.45) 100%),"
             "linear-gradient(0deg,rgba(20,48,29,.35) 0%,rgba(20,48,29,0) 40%),"
-            f"url(data:image/jpeg;base64,{_foto}) center 33%/cover no-repeat}}"
-            "@media (min-width:1500px){.hms-franja{min-height:300px}}"
+            f"url(data:image/jpeg;base64,{_foto}) center 34%/cover no-repeat}}"
+            "@media (min-width:1500px){.hms-franja{min-height:235px}}"
             ".hms-franja .hm-hc{background:rgba(255,255,255,.14) !important;color:#fff;"
             "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}"
             ".hms-franja .hm-hc:hover,.hms-franja .hm-hc:focus{background:rgba(255,255,255,.26) !important}"

@@ -66,6 +66,21 @@ def _cache_lectura(fn):
     return _wrapper
 
 
+def leer_cache(query: str, params: tuple = ()) -> List[Dict]:
+    """SELECT con el mismo cache de lecturas (se vacía con cualquier
+    escritura de la app). Cada consulta a Supabase es un viaje de ida y
+    vuelta; una pantalla hace 30 o más, así que reusar ahorra segundos."""
+    key = ("_sql", query, tuple(params))
+    now = _time_cache.time()
+    hit = _CACHE_LECTURAS.get(key)
+    if hit is not None and now - hit[0] < _CACHE_TTL_SEG:
+        return _copy_cache.deepcopy(hit[1])
+    with get_conn() as conn:
+        val = [dict(r) for r in conn.execute(query, params).fetchall()]
+    _CACHE_LECTURAS[key] = (now, val)
+    return _copy_cache.deepcopy(val)
+
+
 def _invalida_cache(fn):
     """Decorator para funciones de ESCRITURA: invalida el cache de
     lecturas al terminar (con éxito o con error — invalidar de más es

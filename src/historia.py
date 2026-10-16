@@ -27,8 +27,7 @@ def _f(x) -> Optional[date]:
 
 def _sql(q: str, p: tuple = ()) -> List[Dict]:
     try:
-        with db.get_conn() as conn:
-            return [dict(r) for r in conn.execute(q, p).fetchall()]
+        return db.leer_cache(q, tuple(p))
     except Exception:
         return []
 

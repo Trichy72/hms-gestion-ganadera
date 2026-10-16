@@ -37,6 +37,7 @@ def _iso(d: date) -> str:
 
 
 def _refrescar():
+    db.invalidar_cache_lecturas()
     try:
         st.cache_data.clear()
     except Exception:
@@ -354,14 +355,16 @@ def dialog_entrevista(lote_id: int):
 # el semáforo lo pide, visita técnica (incluida o con cargo), entrevista.
 # (clave, nombre, ícono, color, cómo se lee en "Para hoy")
 from .contacto import TIPOS_CONTACTO  # noqa: E402
+_TABLAS_OK: Dict[str, bool] = {}
 from .contacto import MATERIAL as _MAT  # noqa: E402
 TIPOS_ACTIVIDAD = {f"{_MAT[k]} {nom}": k for k, nom, ico, _, _ in TIPOS_CONTACTO}
 _ICO_CONTACTO = {k: ico for k, _, ico, _, _ in TIPOS_CONTACTO}
 
 
 def _ensure_agenda() -> None:
-    if db._usando_postgres():
+    if db._usando_postgres() or _TABLAS_OK.get("agenda"):
         return  # la tabla se creó en Supabase
+    _TABLAS_OK["agenda"] = True
     with db.get_conn() as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS agenda (
             id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
@@ -372,11 +375,9 @@ def _ensure_agenda() -> None:
 def listar_agenda(desde: str, hasta: str) -> List[Dict]:
     try:
         _ensure_agenda()
-        with db.get_conn() as conn:
-            rows = conn.execute(
-                "SELECT a.*, c.nombre AS cliente FROM agenda a LEFT JOIN clientes c ON c.id = a.cliente_id "
-                "WHERE a.fecha >= ? AND a.fecha <= ? ORDER BY a.fecha, a.id", (desde, hasta)).fetchall()
-        return [dict(r) for r in rows]
+        return db.leer_cache(
+            "SELECT a.*, c.nombre AS cliente FROM agenda a LEFT JOIN clientes c ON c.id = a.cliente_id "
+            "WHERE a.fecha >= ? AND a.fecha <= ? ORDER BY a.fecha, a.id", (desde, hasta))
     except Exception:
         return []
 
@@ -384,11 +385,13 @@ def listar_agenda(desde: str, hasta: str) -> List[Dict]:
 def marcar_actividad(act_id: int, hecho: bool) -> None:
     with db.get_conn() as conn:
         conn.execute("UPDATE agenda SET hecho = ? WHERE id = ?", (1 if hecho else 0, act_id))
+    db.invalidar_cache_lecturas()
 
 
 def borrar_actividad(act_id: int) -> None:
     with db.get_conn() as conn:
         conn.execute("DELETE FROM agenda WHERE id = ?", (act_id,))
+    db.invalidar_cache_lecturas()
 
 
 @st.dialog("Agregar actividad")
@@ -419,8 +422,9 @@ MEDIOS_CHARLA = [f"{_MAT[k]} {nom}" for k, nom, ico, _, _ in TIPOS_CONTACTO if k
 
 
 def _ensure_charlas() -> None:
-    if db._usando_postgres():
+    if db._usando_postgres() or _TABLAS_OK.get("charlas"):
         return  # la tabla se creó en Supabase
+    _TABLAS_OK["charlas"] = True
     with db.get_conn() as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS charlas (
             id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, cliente_id INTEGER,
@@ -430,10 +434,8 @@ def _ensure_charlas() -> None:
 def listar_charlas(lote_id: int, limite: int = 20) -> List[Dict]:
     try:
         _ensure_charlas()
-        with db.get_conn() as conn:
-            rows = conn.execute("SELECT * FROM charlas WHERE lote_id = ? ORDER BY fecha DESC, id DESC LIMIT ?",
-                                (lote_id, limite)).fetchall()
-        return [dict(r) for r in rows]
+        return db.leer_cache("SELECT * FROM charlas WHERE lote_id = ? ORDER BY fecha DESC, id DESC LIMIT ?",
+                             (lote_id, limite))
     except Exception:
         return []
 
@@ -441,6 +443,7 @@ def listar_charlas(lote_id: int, limite: int = 20) -> List[Dict]:
 def borrar_charla(charla_id: int) -> None:
     with db.get_conn() as conn:
         conn.execute("DELETE FROM charlas WHERE id = ?", (charla_id,))
+    db.invalidar_cache_lecturas()
 
 
 @st.dialog("Anotar charla con el cliente")

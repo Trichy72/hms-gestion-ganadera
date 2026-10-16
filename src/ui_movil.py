@@ -106,8 +106,7 @@ def _sql(query: str, params: tuple = ()) -> List[Dict]:
     """Consulta directa para las tablas nuevas (plan, controles,
     informes). Si la tabla no existe devuelve []."""
     try:
-        with db.get_conn() as conn:
-            return [dict(r) for r in conn.execute(query, params).fetchall()]
+        return db.leer_cache(query, tuple(params))
     except Exception as e:  # tabla inexistente en SQLite local, etc.
         log.info("ui_movil: consulta sin resultado (%s)", e)
         return []
@@ -1522,6 +1521,7 @@ def _armar_informe(lote: Dict, d: Dict) -> str:
                          "VALUES (?, 'cierre_ciclo', ?, ?, ?, ?, 'borrador')",
                          (d["id"], datos.get("fecha_encierre"), datos.get("fecha_fin_o_hoy"), texto,
                           _json.dumps(datos, ensure_ascii=False, default=str)))
+        db.invalidar_cache_lecturas()
     except Exception as e:
         log.info("ui_movil: guardar informe: %s", e)
     return texto

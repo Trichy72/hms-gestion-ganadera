@@ -1809,8 +1809,8 @@ try:
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
             ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"])'
             "{display:inline-flex !important;width:fit-content !important;max-width:100%;margin-left:1.4rem;margin-bottom:34px;"
-            "background:rgba(16,40,24,.45) !important;border:1px solid rgba(255,255,255,.22) !important;"
-            "backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px !important;box-shadow:none !important}"
+            "background:rgba(255,255,255,.14) !important;border:none !important;"
+            "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border-radius:10px !important;box-shadow:none !important}"
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
             ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"]:not([aria-selected="true"])'
             "{color:#fff !important}"
@@ -1819,10 +1819,16 @@ try:
             "{color:#fff !important}"
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
             ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"][aria-selected="true"]'
-            "{background:#fff !important;box-shadow:0 2px 8px rgba(0,0,0,.25) !important}"
+            "{background:rgba(255,255,255,.28) !important;box-shadow:inset 0 -3px 0 #8BC53F !important}"
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
             ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"][aria-selected="true"] *'
-            "{color:#1B3E27 !important}"
+            "{color:#fff !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"]:hover'
+            "{background:rgba(255,255,255,.20) !important}"
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]) [data-testid="stTab"] p'
+            "{text-shadow:0 1px 2px rgba(0,0,0,.45)}"
             '[data-testid="stHeader"]{background:transparent !important}'
             '[data-testid="stHeader"] *{color:#fff !important}'
             '[data-testid="stHeader"] button,[data-testid="stHeader"] a{filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}'

@@ -13,6 +13,15 @@ import io
 import logging
 import os
 import tempfile
+import time as _time_tz
+
+# El servidor corre en UTC: después de las 21 h de Argentina "hoy" pasaba a
+# ser mañana (fechas por defecto, Para hoy, calendario). Hora de Argentina.
+os.environ["TZ"] = "America/Argentina/Buenos_Aires"
+try:
+    _time_tz.tzset()
+except AttributeError:
+    pass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional

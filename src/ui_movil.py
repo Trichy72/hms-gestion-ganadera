@@ -307,6 +307,8 @@ def _seguimiento(d: Dict, hoy: date) -> None:
     cands = [f_c, d.get("fecha_peso")]
     ent = _sql("SELECT max(fecha_entrega) AS f FROM entregas_producto WHERE lote_id = ?", (lid,))
     cands.append(_fecha(ent[0].get("f")) if ent else None)
+    ch = _sql("SELECT max(fecha) AS f FROM charlas WHERE lote_id = ?", (lid,))
+    cands.append(_fecha(ch[0].get("f")) if ch else None)
     cands = [c for c in cands if c]
     d["ult_contacto"] = max(cands) if cands else None
 
@@ -853,7 +855,7 @@ def _mis_actividades(y: int, m: int, hoy: date, key: str) -> None:
             f = _fecha(a.get("fecha"))
             ico = _CAL_TIPOS.get(a.get("tipo") or "tarea", _CAL_TIPOS["tarea"])[0]
             quien = a.get("cliente") or ""
-            txt = f"{ico} **{_dia_corto(f)} {f.day}/{f.month}** · " if f else ""
+            txt = f"{ico} **{_dia_corto(f)}/{f.month}** · " if f else ""
             txt += (f"{quien} · " if quien else "") + str(a.get("titulo") or "")
             if a.get("hecho"):
                 txt = f"~~{txt}~~ ✓"
@@ -1349,7 +1351,38 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
     if b2.button("🏠 Corral (reparo, sombra, piso, agua)", key=f"{kp}_inst_{d['id']}", width="stretch"):
         _g.dialog_instalaciones(d["id"])
     _seccion_situacion(lote, d, kp)
+    _seccion_charlas(lote, d, kp)
     _analisis_ia(lote, d, kp)
+
+
+_MEDIO_ICO = {"Llamado": "📲", "Visita al campo": "🚗", "WhatsApp": "💬", "En persona (otro lugar)": "🤝"}
+
+
+def _seccion_charlas(lote: Dict, d: Dict, kp: str) -> None:
+    """Lo que se habló con el cliente: la historia del lote en palabras."""
+    from . import ui_gestion as _g
+    ch = _g.listar_charlas(d["id"])
+    st.markdown(f'<div class="hm"><div class="hm-lbl">CHARLAS CON EL CLIENTE · {len(ch)}</div></div>',
+                unsafe_allow_html=True)
+    if st.button("💬 Anotar una charla", key=f"{kp}_ch_{d['id']}", width="stretch"):
+        _g.dialog_charla(d["id"])
+    if not ch:
+        st.markdown('<div class="hm"><div class="hm-card"><div class="hm-sub">Todavía no anotaste ninguna. '
+                    'Después de cada llamado o visita, dos líneas de qué se habló y qué se acordó.</div></div></div>',
+                    unsafe_allow_html=True)
+        return
+    def _una(c):
+        f = _fecha(c.get("fecha"))
+        ac = (f'<div class="hm-nota" style="margin-top:6px"><b>Se acordó:</b> {_e(c.get("acuerdos"))}</div>'
+              if c.get("acuerdos") else "")
+        return (f'<div class="hm-card"><div class="hm-sub" style="margin-bottom:4px">'
+                f'{_MEDIO_ICO.get(c.get("medio"), "💬")} <b>{_dia_corto(f)}/{f.month}</b> · {_e(c.get("medio") or "")}</div>'
+                f'<div style="white-space:pre-wrap">{_e(c.get("resumen"))}</div>{ac}</div>')
+    st.markdown('<div class="hm">' + "".join(_una(c) for c in ch[:3]) + '</div>', unsafe_allow_html=True)
+    if len(ch) > 3:
+        with st.expander(f"Ver las {len(ch) - 3} anteriores"):
+            st.markdown('<div class="hm">' + "".join(_una(c) for c in ch[3:]) + '</div>', unsafe_allow_html=True)
+
 
 
 # (clave, ícono, nombre, áreas de los puntos débiles, preguntas de la entrevista)
@@ -1482,6 +1515,7 @@ def _pedir_analisis_ia(lote: Dict, d: Dict) -> str:
         key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not key:
         return "Falta configurar la clave de la IA (ANTHROPIC_API_KEY) en la app."
+    from . import ui_gestion as _gch
     info = _clima_cliente(lote.get("cliente_id")) or {}
     hoy = date.today()
     pron = [x for x in info.get("pronostico_7d") or [] if (_fecha(x.get("fecha")) or hoy) >= hoy - timedelta(days=3)]
@@ -1503,6 +1537,9 @@ def _pedir_analisis_ia(lote: Dict, d: Dict) -> str:
         "alimento_dias_restantes": (d.get("stock_min") or {}).get("dias_restantes"),
         "consumo_real_vs_racion_pct": d.get("consumo_pct"),
         "muertes": d.get("muertes"),
+        "charlas_con_el_cliente_ultimas": [
+            {k: c.get(k) for k in ("fecha", "medio", "resumen", "acuerdos")}
+            for c in _gch.listar_charlas(d["id"], 6)],
         "ultimo_control": {k: ctrl.get(k) for k in ("fecha_respuesta", "respuestas", "comentarios",
                                                      "semaforo_general", "semaforo_sanidad",
                                                      "semaforo_consumo", "semaforo_ambiente",

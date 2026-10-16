@@ -394,6 +394,77 @@ def dialog_actividad(fecha_inicial: Optional[date] = None):
         _refrescar()
 
 
+# ---------------------------------------------------------------------
+# Charlas con el cliente: qué se habló y qué se acordó
+# ---------------------------------------------------------------------
+MEDIOS_CHARLA = ["Llamado", "Visita al campo", "WhatsApp", "En persona (otro lugar)"]
+
+
+def _ensure_charlas() -> None:
+    if db._usando_postgres():
+        return  # la tabla se creó en Supabase
+    with db.get_conn() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS charlas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, cliente_id INTEGER,
+            lote_id INTEGER, medio TEXT, resumen TEXT NOT NULL, acuerdos TEXT, creado TEXT)""")
+
+
+def listar_charlas(lote_id: int, limite: int = 20) -> List[Dict]:
+    try:
+        _ensure_charlas()
+        with db.get_conn() as conn:
+            rows = conn.execute("SELECT * FROM charlas WHERE lote_id = ? ORDER BY fecha DESC, id DESC LIMIT ?",
+                                (lote_id, limite)).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def borrar_charla(charla_id: int) -> None:
+    with db.get_conn() as conn:
+        conn.execute("DELETE FROM charlas WHERE id = ?", (charla_id,))
+
+
+@st.dialog("Anotar charla con el cliente")
+def dialog_charla(lote_id: int):
+    l = db.obtener_lote(lote_id) or {}
+    st.caption(f"{l.get('cliente_nombre') or ''} · {l.get('identificador') or ''}. "
+               "Queda en la historia del lote y la IA la tiene en cuenta al analizarlo.")
+    with st.form("f_charla"):
+        c1, c2 = st.columns(2)
+        f = c1.date_input("Fecha", value=date.today(), format="DD/MM/YYYY")
+        medio = c2.selectbox("Cómo", MEDIOS_CHARLA)
+        resumen = st.text_area("Qué se habló", height=140,
+                               placeholder="Ej.: dice que dejan algo de comida a la mañana, bosta normal, "
+                                           "una vaquillona renga. Quiere vender a fin de diciembre.")
+        acuerdos = st.text_area("Qué se acordó (opcional)", height=80,
+                                placeholder="Ej.: bajar 0,5 kg la carga de la mañana y avisar el viernes.")
+        st.markdown("**Próximo paso (opcional)**: se agrega al calendario.")
+        c3, c4 = st.columns([1, 2])
+        sigue = c3.date_input("Para el", value=None, format="DD/MM/YYYY")
+        sigue_txt = c4.text_input("Qué hacer", placeholder="Ej.: llamar para ver si mejoró")
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        if not resumen.strip():
+            st.error("Escribí qué se habló.")
+            return
+        _ensure_charlas()
+        with db.get_conn() as conn:
+            conn.execute("INSERT INTO charlas (fecha, cliente_id, lote_id, medio, resumen, acuerdos, creado) "
+                         "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (_iso(f), l.get("cliente_id"), lote_id, medio, resumen.strip(),
+                          acuerdos.strip() or None, _iso(date.today())))
+        if sigue:
+            _ensure_agenda()
+            with db.get_conn() as conn:
+                conn.execute("INSERT INTO agenda (fecha, tipo, cliente_id, titulo, hecho, creado) "
+                             "VALUES (?, 'llamado', ?, ?, 0, ?)",
+                             (_iso(sigue), l.get("cliente_id"), sigue_txt.strip() or "seguimiento de la charla",
+                              _iso(date.today())))
+        st.success("Charla guardada.")
+        _refrescar()
+
+
 @st.dialog("Datos del cliente")
 def dialog_cliente(cliente_id: Optional[int] = None):
     c = db.obtener_cliente(cliente_id) if cliente_id else {}

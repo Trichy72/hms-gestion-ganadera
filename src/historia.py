@@ -109,8 +109,30 @@ def eventos(lote_id: int, lote: Dict) -> List[Dict]:
         add(m.get("fecha"), "movimiento", f"{lab.get(m.get('tipo'), m.get('tipo'))}: {_num(abs(m.get('cantidad') or 0))}",
             m.get("detalles") or "")
 
+    # Fotos, agrupadas por día
+    from . import control_semanal as cs
+    por_dia: Dict = {}
+    for ft in cs.listar_fotos(lote_id, con_datos=False):
+        por_dia.setdefault(ft["fecha"], []).append(ft)
+    origen_txt = {"control": "del control", "entrevista": "de la entrevista", "charla": "de la charla",
+                  "suelta": "sueltas"}
+    for fch, fs in por_dia.items():
+        temas = sorted({cs.TEMAS_TODOS.get(x.get("tema"), x.get("tema") or "") for x in fs})
+        orig = sorted({origen_txt.get(x["origen"], "") for x in fs} - {""})
+        add(fch, "foto", f"{len(fs)} foto{'s' if len(fs) != 1 else ''} {' y '.join(orig)}".strip(),
+            ", ".join(t.lower() for t in temas))
+
     ev.sort(key=lambda e: e["fecha"], reverse=True)
     return ev
+
+
+def fotos_para_comparar(lote_id: int) -> Dict[str, List[Dict]]:
+    """Por tema, la primera y la última foto (con datos), para ver el cambio."""
+    from . import control_semanal as cs
+    por_tema: Dict[str, List[Dict]] = {}
+    for ft in cs.listar_fotos(lote_id):
+        por_tema.setdefault(ft.get("tema") or "otra", []).append(ft)
+    return por_tema
 
 
 def evolucion(lote_id: int, lote: Dict) -> List[Dict]:
@@ -194,5 +216,8 @@ SISTEMA_INFORME = (
     "5) Recomendaciones para el próximo encierre, solo las que se apoyan en lo que pasó en este lote. "
     "Reglas: usá solo los números que vienen en los datos; si falta un dato, decí que falta, no lo estimes ni "
     "lo inventes. No nombres marcas comerciales de alimento. Si un criterio técnico trae fuente, citala entre "
-    "paréntesis. Sin títulos en inglés ni jerga de programación."
+    "paréntesis. Sin títulos en inglés ni jerga de programación. "
+    "Si vienen fotos, cada una trae su tema y fecha: describí solo lo que se ve con claridad (barro, estado del "
+    "comedero y del bebedero, aspecto de la bosta, estado de los animales) y compará la primera con la última "
+    "del mismo tema; si una foto no permite sacar una conclusión, decilo."
 )

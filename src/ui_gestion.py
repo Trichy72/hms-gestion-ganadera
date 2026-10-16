@@ -326,12 +326,23 @@ def dialog_entrevista(lote_id: int):
                                            step=1.0, key=f"ent_{k}", help=ayuda)
                 else:
                     r[k] = st.text_input(texto, value=str(v0 or ""), key=f"ent_{k}", help=ayuda)
+        st.markdown("**Fotos del inicio** (opcional): quedan como punto de partida para comparar.")
+        fotos = []
+        cf = st.columns(3)
+        for i, (tema, et) in enumerate((("lote", "Corral entero"), ("comedero", "Comedero"),
+                                         ("bebedero", "Bebedero"))):
+            up = cf[i].file_uploader(et, type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True,
+                                     key=f"ent_foto_{tema}")
+            fotos += [(tema, u.getvalue()) for u in up or []]
         ok = st.form_submit_button("Guardar entrevista", type="primary", width="stretch")
     if ok:
         r = {k: v for k, v in r.items() if v not in ("", 0, 0.0, [], None)}
         campos = ent.campos_lote(r)
         db.actualizar_lote(lote_id, entrevista=_json.dumps(r, ensure_ascii=False),
-                           entrevista_fecha=_iso(date.today()), **campos)
+                           entrevista_fecha=l.get("entrevista_fecha") or _iso(date.today()), **campos)
+        if fotos:
+            from . import control_semanal as cs
+            cs.guardar_fotos(lote_id, l.get("entrevista_fecha") or _iso(date.today()), fotos, "entrevista")
         st.success("Entrevista guardada. El estado de situación del lote ya está en la ficha.")
         _refrescar()
 
@@ -443,6 +454,11 @@ def dialog_charla(lote_id: int):
         c3, c4 = st.columns([1, 2])
         sigue = c3.date_input("Para el", value=None, format="DD/MM/YYYY")
         sigue_txt = c4.text_input("Qué hacer", placeholder="Ej.: llamar para ver si mejoró")
+        from . import control_semanal as cs
+        c5, c6 = st.columns([1, 2])
+        tema_f = c5.selectbox("Fotos de", list(cs.TEMAS_TODOS.values()), index=0)
+        ups = c6.file_uploader("Fotos (opcional)", type=["jpg", "jpeg", "png", "webp"],
+                               accept_multiple_files=True)
         ok = st.form_submit_button("Guardar", type="primary", width="stretch")
     if ok:
         if not resumen.strip():
@@ -461,7 +477,33 @@ def dialog_charla(lote_id: int):
                              "VALUES (?, 'llamado', ?, ?, 0, ?)",
                              (_iso(sigue), l.get("cliente_id"), sigue_txt.strip() or "seguimiento de la charla",
                               _iso(date.today())))
+        if ups:
+            tema_k = next((k for k, v in cs.TEMAS_TODOS.items() if v == tema_f), "otra")
+            cs.guardar_fotos(lote_id, _iso(f), [(tema_k, u.getvalue()) for u in ups], "charla",
+                             comentario=resumen.strip()[:200])
         st.success("Charla guardada.")
+        _refrescar()
+
+
+@st.dialog("Subir fotos del lote")
+def dialog_fotos(lote_id: int):
+    from . import control_semanal as cs
+    st.caption("Fotos sueltas de una recorrida o que te mandó el productor. Quedan en la historia del lote "
+               "para comparar cómo cambia el corral.")
+    with st.form("f_fotos"):
+        c1, c2 = st.columns(2)
+        f = c1.date_input("Fecha", value=date.today(), format="DD/MM/YYYY")
+        tema = c2.selectbox("De qué son", list(cs.TEMAS_TODOS.values()))
+        ups = st.file_uploader("Fotos", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+        nota = st.text_input("Comentario (opcional)")
+        ok = st.form_submit_button("Guardar", type="primary", width="stretch")
+    if ok:
+        if not ups:
+            st.error("Elegí al menos una foto.")
+            return
+        tema_k = next((k for k, v in cs.TEMAS_TODOS.items() if v == tema), "otra")
+        n = cs.guardar_fotos(lote_id, _iso(f), [(tema_k, u.getvalue()) for u in ups], "suelta", nota)
+        st.success(f"{n} foto{'s' if n != 1 else ''} guardada{'s' if n != 1 else ''}.")
         _refrescar()
 
 

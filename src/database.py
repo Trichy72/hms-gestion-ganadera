@@ -643,6 +643,13 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 "CREATE INDEX IF NOT EXISTS idx_fotos_lote "
                 "ON fotos_lote(lote_id, recordatorio_id, fecha)"
             )
+            # Columnas que ya tiene Supabase: fotos guardadas en la base
+            # (controles, entrevista, charlas) con su tema.
+            _cf = {row["name"] for row in conn.execute("PRAGMA table_info(fotos_lote)").fetchall()}
+            for _c, _t in (("control_id", "INTEGER"), ("tema", "TEXT"), ("apta_redes", "INTEGER"),
+                           ("datos", "BLOB"), ("mime", "TEXT")):
+                if _c not in _cf:
+                    conn.execute(f"ALTER TABLE fotos_lote ADD COLUMN {_c} {_t}")
         except Exception:
             pass
 

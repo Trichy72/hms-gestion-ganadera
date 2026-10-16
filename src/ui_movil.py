@@ -1362,7 +1362,7 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
 
 
 _HIST_ICO = {"encierre": "🐂", "entrevista": "📋", "control": "🚦", "charla": "💬", "pesada": "⚖",
-             "entrega": "🚚", "racion": "🔄", "movimiento": "↔"}
+             "entrega": "🚚", "racion": "🔄", "movimiento": "↔", "foto": "📷"}
 _HIST_COL = {"verde": "#2E9E57", "amarillo": "#F2C200", "rojo": "#D92D20"}
 
 
@@ -1409,6 +1409,8 @@ def _seccion_historia(lote: Dict, d: Dict, kp: str) -> None:
         if len(evs) > 6:
             with st.expander(f"Ver toda la historia ({len(evs)} registros)"):
                 st.markdown('<div class="hm">' + "".join(_ev(e) for e in evs[6:]) + '</div>', unsafe_allow_html=True)
+    # Fotos: primera y última de cada tema, para ver el cambio
+    _fotos_historia(d["id"], kp)
     # Informe de cierre
     key = f"{kp}_inf_{d['id']}"
     if st.button("📄 Armar informe del ciclo (borrador con IA)", key=key + "_b", width="stretch"):
@@ -1424,6 +1426,44 @@ def _seccion_historia(lote: Dict, d: Dict, kp: str) -> None:
                            key=key + "_dl", width="stretch")
 
 
+def _fotos_historia(lote_id: int, kp: str) -> None:
+    from . import historia as hi
+    from . import control_semanal as cs
+    from . import ui_gestion as _g
+    try:
+        por_tema = hi.fotos_para_comparar(lote_id)
+    except Exception:
+        por_tema = {}
+    n = sum(len(v) for v in por_tema.values())
+    st.markdown(f'<div class="hm"><div class="hm-lbl" style="margin-top:4px">FOTOS · {n}</div></div>',
+                unsafe_allow_html=True)
+    if st.button("📷 Subir fotos", key=f"{kp}_fot_{lote_id}", width="stretch"):
+        _g.dialog_fotos(lote_id)
+    if not por_tema:
+        st.markdown('<div class="hm"><div class="hm-card"><div class="hm-sub">Todavía no hay fotos. Entran con la '
+                    'entrevista inicial, los controles semanales, las charlas o con este botón. Conviene sacar '
+                    'siempre las mismas: corral, comedero, bebedero y bosta.</div></div></div>',
+                    unsafe_allow_html=True)
+        return
+    orden = list(cs.TEMAS_TODOS)
+    for tema in sorted(por_tema, key=lambda t: orden.index(t) if t in orden else 99):
+        fs = por_tema[tema]
+        nombre = cs.TEMAS_TODOS.get(tema, tema)
+        if len(fs) == 1:
+            st.caption(f"{nombre} · {_dm(_fecha(fs[0]['fecha']))}")
+            st.image(fs[0]["datos"], width=320)
+            continue
+        st.caption(f"{nombre} · primera y última de {len(fs)}")
+        c1, c2 = st.columns(2)
+        c1.image(fs[0]["datos"], caption=f"{_dm(_fecha(fs[0]['fecha']))} (primera)", width="stretch")
+        c2.image(fs[-1]["datos"], caption=f"{_dm(_fecha(fs[-1]['fecha']))} (última)", width="stretch")
+        if len(fs) > 2:
+            with st.expander(f"Ver las {len(fs)} de {nombre.lower()}"):
+                cols = st.columns(4)
+                for i, ft in enumerate(fs):
+                    cols[i % 4].image(ft["datos"], caption=_dm(_fecha(ft["fecha"])), width="stretch")
+
+
 def _armar_informe(lote: Dict, d: Dict) -> str:
     import json as _json
     import os
@@ -1435,6 +1475,20 @@ def _armar_informe(lote: Dict, d: Dict) -> str:
     if not key:
         return "Falta configurar la clave de la IA (ANTHROPIC_API_KEY) en la app."
     datos = hi.resumen_ciclo(d["id"], lote, d)
+    import base64 as _b64
+    from . import control_semanal as cs
+    contenido = []
+    try:
+        for tema, fs in hi.fotos_para_comparar(d["id"]).items():
+            for ft in ([fs[0], fs[-1]] if len(fs) > 1 else fs):
+                if not str(ft.get("mime") or "").startswith("image/") or len(contenido) >= 16:
+                    continue
+                contenido.append({"type": "text", "text": f"Foto: {cs.TEMAS_TODOS.get(tema, tema)}, {ft['fecha']}"})
+                contenido.append({"type": "image", "source": {"type": "base64", "media_type": ft["mime"],
+                                                               "data": _b64.b64encode(ft["datos"]).decode()}})
+    except Exception as e:
+        log.info("ui_movil: fotos informe: %s", e)
+    contenido.append({"type": "text", "text": _json.dumps(datos, ensure_ascii=False, default=str)})
     texto = None
     try:
         from anthropic import Anthropic
@@ -1443,8 +1497,7 @@ def _armar_informe(lote: Dict, d: Dict) -> str:
         for modelo in ("claude-sonnet-5-5", "claude-sonnet-4-5"):
             try:
                 r = cli.messages.create(model=modelo, max_tokens=2500, system=hi.SISTEMA_INFORME,
-                                        messages=[{"role": "user",
-                                                   "content": _json.dumps(datos, ensure_ascii=False, default=str)}])
+                                        messages=[{"role": "user", "content": contenido}])
                 texto = "".join(getattr(b, "text", "") for b in r.content).strip()
                 break
             except Exception as e:

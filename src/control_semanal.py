@@ -72,6 +72,9 @@ TEMAS_FOTO = {
     "bebedero": "Bebedero",
     "lote": "Lote (1 o 2)",
 }
+# Para mostrar: incluye las de la entrevista y las sueltas
+TEMAS_TODOS = {"lote": "Lote y corral", "comedero": "Comedero", "bebedero": "Bebedero",
+               "bosta": "Bosta", "animales": "Animales", "otra": "Otras"}
 
 AREAS = [("sanidad", "Sanidad"), ("consumo", "Consumo"),
          ("ambiente", "Ambiente"), ("alimento", "Alimento")]
@@ -188,6 +191,58 @@ def guardar_control(lote_id: int, fecha: str, resp: Dict, tipo_comedero: str,
     except Exception:
         pass
     return cid
+
+
+def guardar_fotos(lote_id: int, fecha: str, fotos: List[Tuple[str, bytes]], origen: str,
+                  comentario: str = "") -> int:
+    """Fotos que no vienen de un control: entrevista inicial, charlas o
+    visitas. `origen` queda en `tipo` para saber de dónde salió cada una."""
+    n = 0
+    with db.get_conn() as conn:
+        for tema, datos in fotos or []:
+            chico, mime = _achicar(datos)
+            conn.execute(
+                "INSERT INTO fotos_lote (lote_id, tipo, archivo_path, fecha, tema, datos, mime, comentario) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (lote_id, origen, "", fecha[:10] + "T12:00:00", tema, chico, mime, comentario or None),
+            )
+            n += 1
+    try:
+        db.invalidar_cache_lecturas()
+    except Exception:
+        pass
+    return n
+
+
+def listar_fotos(lote_id: int, con_datos: bool = True) -> List[Dict]:
+    """Todas las fotos del lote con su fecha, tema y de dónde vienen
+    (control, entrevista, charla). Las de controles toman la fecha del control."""
+    cols = "f.id, f.tema, f.tipo, f.mime, f.fecha, f.control_id, f.comentario" + (", f.datos" if con_datos else "")
+    try:
+        try:
+            with db.get_conn() as conn:
+                rows = conn.execute(
+                    f"SELECT {cols}, COALESCE(c.fecha_respuesta, c.fecha_envio) AS fecha_control "
+                    "FROM fotos_lote f LEFT JOIN controles_semanales c ON c.id = f.control_id "
+                    "WHERE f.lote_id = ? ORDER BY f.id", (lote_id,)).fetchall()
+        except Exception:  # base local sin tabla de controles
+            with db.get_conn() as conn:
+                rows = conn.execute(f"SELECT {cols} FROM fotos_lote f WHERE f.lote_id = ? ORDER BY f.id",
+                                    (lote_id,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            if con_datos:
+                if d.get("datos") is None:
+                    continue
+                d["datos"] = bytes(d["datos"])
+            d["fecha"] = str(d.get("fecha_control") or d.get("fecha") or "")[:10]
+            d["origen"] = "control" if d.get("control_id") else (d.get("tipo") or "suelta")
+            out.append(d)
+        out.sort(key=lambda d: (d["fecha"], d["id"]))
+        return out
+    except Exception:
+        return []
 
 
 def listar_controles(lote_id: int) -> List[Dict]:

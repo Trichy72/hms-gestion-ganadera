@@ -1758,18 +1758,22 @@ try:
     if _fp.exists():
         _foto = _b64_fr.b64encode(_fp.read_bytes()).decode()
         _css_franja_hdr = (
-            "<style>.hms-franja{border-radius:16px;color:#fff;background:"
-            "linear-gradient(90deg,rgba(20,48,29,.92) 0%,rgba(20,48,29,.72) 35%,rgba(20,48,29,.45) 65%,rgba(20,48,29,.62) 100%),"
-            f"url(data:image/jpeg;base64,{_foto}) center 38%/cover no-repeat}}"
+            "<style>.hms-franja{border-radius:16px;color:#fff;min-height:250px;align-items:flex-start !important;"
+            "padding:20px 22px !important;background:"
+            "linear-gradient(90deg,rgba(20,48,29,.80) 0%,rgba(20,48,29,.30) 30%,rgba(20,48,29,.05) 55%,rgba(20,48,29,.45) 100%),"
+            "linear-gradient(0deg,rgba(20,48,29,.35) 0%,rgba(20,48,29,0) 40%),"
+            f"url(data:image/jpeg;base64,{_foto}) center 33%/cover no-repeat}}"
+            "@media (min-width:1500px){.hms-franja{min-height:300px}}"
             ".hms-franja .hm-hc{background:rgba(255,255,255,.14) !important;color:#fff;"
             "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}"
             ".hms-franja .hm-hc:hover,.hms-franja .hm-hc:focus{background:rgba(255,255,255,.26) !important}"
             ".hms-franja .hm-hc-d,.hms-franja .hm-hc-m{opacity:.85}"
             ".hms-franja .hm-ha{border-right-color:rgba(255,255,255,.35) !important;color:#fff}"
             ".hms-franja .hm-hv{color:#fff;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.4)}"
-            "@media (max-width:760px){.hms-franja{background:"
-            "linear-gradient(180deg,rgba(20,48,29,.88) 0%,rgba(20,48,29,.70) 100%),"
-            f"url(data:image/jpeg;base64,{_foto}) 60% 38%/cover no-repeat}}}}"
+            "@media (max-width:760px){.hms-franja{min-height:0;background:"
+            "linear-gradient(180deg,rgba(20,48,29,.75) 0%,rgba(20,48,29,.25) 45%,rgba(20,48,29,.80) 100%),"
+            f"url(data:image/jpeg;base64,{_foto}) 60% 45%/cover no-repeat}}"
+            ".hms-franja .hm-hw{margin-top:90px}}}"
             "</style>")
         if _lb.exists():
             _logo_franja_hdr = (

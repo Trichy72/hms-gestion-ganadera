@@ -369,14 +369,18 @@ def _ensure_agenda() -> None:
         conn.execute("""CREATE TABLE IF NOT EXISTS agenda (
             id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL,
             tipo TEXT NOT NULL DEFAULT 'tarea', cliente_id INTEGER, titulo TEXT NOT NULL,
-            hecho INTEGER NOT NULL DEFAULT 0, creado TEXT)""")
+            hecho INTEGER NOT NULL DEFAULT 0, creado TEXT, con_quien TEXT)""")
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(agenda)").fetchall()}
+        if "con_quien" not in cols:
+            conn.execute("ALTER TABLE agenda ADD COLUMN con_quien TEXT")
 
 
 def listar_agenda(desde: str, hasta: str) -> List[Dict]:
     try:
         _ensure_agenda()
         return db.leer_cache(
-            "SELECT a.*, c.nombre AS cliente FROM agenda a LEFT JOIN clientes c ON c.id = a.cliente_id "
+            "SELECT a.*, COALESCE(c.nombre, a.con_quien) AS cliente FROM agenda a "
+            "LEFT JOIN clientes c ON c.id = a.cliente_id "
             "WHERE a.fecha >= ? AND a.fecha <= ? ORDER BY a.fecha, a.id", (desde, hasta))
     except Exception:
         return []
@@ -400,16 +404,20 @@ def dialog_actividad(fecha_inicial: Optional[date] = None):
     ops_cli = {"Sin cliente": None} | {c["nombre"]: c["id"] for c in clientes}
     with st.form("f_actividad"):
         tipo = st.radio("Tipo de contacto", list(TIPOS_ACTIVIDAD), horizontal=True)
-        cli = st.selectbox("Cliente", list(ops_cli))
+        c1, c2 = st.columns(2)
+        cli = c1.selectbox("Cliente", list(ops_cli))
+        otro = c2.text_input("…o con quién (si no es cliente)", placeholder="Ej.: Grupo Quemú, proveedor, contador")
         f = st.date_input("Fecha", value=fecha_inicial or date.today(), format="DD/MM/YYYY")
         txt = st.text_input("Qué hay que hacer", placeholder="Ej.: llamar para ver cómo vienen comiendo")
         ok = st.form_submit_button("Guardar", type="primary", width="stretch")
     if ok:
-        titulo = txt.strip() or tipo.lower()
+        titulo = txt.strip() or tipo.split(" ", 1)[-1].lower()
         _ensure_agenda()
         with db.get_conn() as conn:
-            conn.execute("INSERT INTO agenda (fecha, tipo, cliente_id, titulo, hecho, creado) VALUES (?, ?, ?, ?, 0, ?)",
-                          (_iso(f), TIPOS_ACTIVIDAD[tipo], ops_cli[cli], titulo, _iso(date.today())))
+            conn.execute("INSERT INTO agenda (fecha, tipo, cliente_id, titulo, hecho, creado, con_quien) "
+                         "VALUES (?, ?, ?, ?, 0, ?, ?)",
+                         (_iso(f), TIPOS_ACTIVIDAD[tipo], ops_cli[cli], titulo, _iso(date.today()),
+                          (otro.strip() or None) if ops_cli[cli] is None else None))
         st.success("Guardado. Aparece en el calendario y, el día que toca, en Para hoy.")
         _refrescar()
 

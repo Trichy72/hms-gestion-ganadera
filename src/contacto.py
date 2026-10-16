@@ -11,6 +11,7 @@ TIPOS_CONTACTO = [
     ("visita", "Visita técnica", "🚗", "#8A5A00", "visita técnica"),
     ("visita_cargo", "Visita con cargo", "💵", "#6A3FA0", "visita con cargo"),
     ("entrevista", "Entrevista", "🗒", "#2E7D32", "entrevista"),
+    ("reunion", "Reunión", "🤝", "#0F6E78", "reunión"),
     ("tarea", "Recordatorio", "📌", "#B42318", "recordatorio"),
 ]
 
@@ -23,6 +24,7 @@ _SVG_IN = {
     "visita_cargo": '<rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v5M17.5 9.5v5"/>',
     "entrevista": '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4"/>',
     "tarea": '<path d="M9 4h6l-1 5 3 3v1.5H7V12l3-3z"/><path d="M12 13.5V20"/>',
+    "reunion": '<circle cx="8.5" cy="8.5" r="2.6"/><circle cx="15.5" cy="8.5" r="2.6"/><path d="M3.5 19c0-3 2.2-5.2 5-5.2s5 2.2 5 5.2"/><path d="M13.6 14.1c.6-.2 1.2-.3 1.9-.3 2.8 0 5 2.2 5 5.2"/>',
 }
 _COLOR = {k: c for k, _, _, c, _ in TIPOS_CONTACTO}
 _POR_EMOJI = {ico: k for k, _, ico, _, _ in TIPOS_CONTACTO}
@@ -53,4 +55,5 @@ def clave_de_emoji(ico: str) -> str:
 # Para los botones de Streamlit (solo aceptan íconos de Google Material)
 MATERIAL = {"whatsapp": ":material/chat:", "llamado": ":material/call:",
             "visita": ":material/directions_car:", "visita_cargo": ":material/payments:",
-            "entrevista": ":material/assignment:", "tarea": ":material/push_pin:"}
+            "entrevista": ":material/assignment:", "reunion": ":material/groups:",
+            "tarea": ":material/push_pin:"}

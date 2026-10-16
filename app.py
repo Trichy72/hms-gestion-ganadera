@@ -1847,7 +1847,12 @@ try:
             ".hms-franja{padding-bottom:84px !important}"
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"]{margin-top:-92px}'
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]'
-            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]){margin-left:.6rem}}'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [role="tablist"]){margin-left:.6rem;margin-right:.6rem;max-width:calc(100% - 1.2rem);gap:0}'
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]>[data-testid="stTab"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [data-testid="stTab"]){padding:9px 9px !important}'
+            '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"] [role="tablist"]>[data-testid="stTab"]'
+            ':not([data-testid="stTabs"] [data-testid="stTabs"] [data-testid="stTab"]) p'
+            '{font-size:.8rem !important}}'
             "</style>")
         if _lb.exists():
             _logo_franja_hdr = (
@@ -2025,19 +2030,16 @@ with st.sidebar:
 # ---------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------
-(tab_hoy, tab_clientes_m, tab_mas) = st.tabs([
+# Todas las pestañas a la vista (antes Terminados, Dietas, Configuración
+# y Ayuda estaban escondidas adentro de "Más"; desplegado el 16/10/2026).
+(tab_hoy, tab_clientes_m, tab_terminados, tab_clientes, tab_config, tab_help) = st.tabs([
     ":material/home: Inicio",
     ":material/groups: Clientes",
-    ":material/more_horiz: Más",
+    ":material/inventory_2: Terminados",
+    ":material/folder_open: Dietas y carga",
+    ":material/settings: Configuración",
+    ":material/help: Ayuda",
 ])
-# Las pantallas anteriores quedan completas dentro de "Más".
-with tab_mas:
-    (tab_terminados, tab_clientes, tab_config, tab_help) = st.tabs([
-        ":material/inventory_2: Lotes terminados",
-        ":material/folder_open: Dietas y carga completa",
-        ":material/settings: Configuración",
-        ":material/help: Ayuda",
-    ])
 # Pantallas que se sacaron el 14/10/2026 (el panel viejo repetía Inicio;
 # Evolución y Análisis están en la ficha de cada lote; el Asesor IA no
 # se usa). El código queda por si hay que volver atrás: poner True.
@@ -16259,8 +16261,8 @@ celular en el campo.
   movimientos e informes. Desde ahí cargás **pesada**, **entrega**,
   **movimiento** (muerte, venta, compra) o **cerrás el lote**.
 - **Clientes:** datos de cada cliente y sus lotes, activos y anteriores.
-- **Más:** lotes terminados, dietas y carga completa, configuración y
-  esta ayuda.
+- **Terminados:** lotes cerrados. **Dietas y carga:** dietas y carga
+  completa. **Configuración** y esta **Ayuda**.
 
 ### De dónde salen los números
 

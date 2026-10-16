@@ -391,6 +391,62 @@ def _adaptar_ddl_a_postgres(ddl: str) -> str:
 _pg_pool: Any = None
 
 
+import threading as _threading  # noqa: E402
+import time as _time  # noqa: E402
+
+_pool_lock = _threading.Lock()
+
+
+def _es_error_de_conexion(e: Exception) -> bool:
+    try:
+        import psycopg2
+        return isinstance(e, (psycopg2.OperationalError, psycopg2.InterfaceError))
+    except Exception:
+        return False
+
+
+def _pool_postgres(url: str):
+    """Pool de conexiones compartido por todas las sesiones de la app.
+    Antes de entregar una conexión verifica que siga viva (Supabase corta
+    las que quedan quietas mucho tiempo)."""
+    global _pg_pool
+    if _pg_pool is None:
+        with _pool_lock:
+            if _pg_pool is None:
+                import psycopg2.pool
+
+                class _PoolVivo(psycopg2.pool.ThreadedConnectionPool):
+                    _uso: dict = {}
+
+                    def putconn(self, conn=None, key=None, close=False):
+                        self._uso[id(conn)] = _time.time()
+                        return super().putconn(conn, key, close)
+
+                    def getconn(self, key=None):
+                        for _ in range(3):
+                            c = super().getconn(key)
+                            try:
+                                if c.closed:
+                                    raise psycopg2.InterfaceError("cerrada")
+                                # Solo se prueba si estuvo quieta más de un minuto
+                                if _time.time() - self._uso.get(id(c), 0) > 60:
+                                    with c.cursor() as cur:
+                                        cur.execute("SELECT 1")
+                                    c.rollback()
+                                return c
+                            except Exception:
+                                try:
+                                    super().putconn(c, close=True)
+                                except Exception:
+                                    pass
+                        return super().getconn(key)
+
+                import psycopg2
+                _pg_pool = _PoolVivo(3, 10, url, connect_timeout=15, keepalives=1,
+                                     keepalives_idle=30, keepalives_interval=10, keepalives_count=3)
+    return _pg_pool
+
+
 def _crear_conexion_postgres(url: str):
     try:
         import psycopg2
@@ -417,18 +473,29 @@ def get_conn(db_path: Optional[Path] = None):
     """
     url = _get_database_url()
     if url:
-        # Modo Postgres — no hay pool, creamos y cerramos por ciclo.
-        # (Simple y suficiente para volumen HMS. Si escala mucho, se
-        # puede meter psycopg2.pool.SimpleConnectionPool).
-        conn = _crear_conexion_postgres(url)
+        # Modo Postgres con pool: abrir una conexión nueva a Supabase en
+        # cada consulta costaba un viaje de ida y vuelta + cifrado por
+        # consulta (una pantalla hace 25 a 40). Ahora se reusan.
+        pool = _pool_postgres(url)
+        raw = pool.getconn()
+        roto = False
+        conn = ConnectionAdapter(raw)
         try:
             yield conn
             conn.commit()
-        except Exception:
-            conn.rollback()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                roto = True
+            if _es_error_de_conexion(e):
+                roto = True
             raise
         finally:
-            conn.close()
+            try:
+                pool.putconn(raw, close=roto or bool(getattr(raw, "closed", 0)))
+            except Exception:
+                pass
     else:
         # Modo SQLite — comportamiento original.
         from src.database import DB_PATH  # import lazy p/ evitar ciclo

@@ -1268,11 +1268,16 @@ def render_ficha(lote_id: int, on_volver, kp: str = "hm",
         if inf:
             for i in inf:
                 h += (f'<div class="hm-ag"><div class="d">{_dm(_fecha(str(i.get("fecha_creacion"))))}</div>'
-                      f'<div>{_e(i.get("tipo")).replace("_", " ")} · {_e(i.get("estado"))}</div></div>')
+                      f'<div>{_e(i.get("tipo")).replace("_", " ").replace("cierre ciclo", "informe de cierre del ciclo")}'
+                      f' · {_e(i.get("estado"))}</div></div>')
         else:
             pp = d.get("proxima_pesada")
             h += f'<div class="hm-sub">Todavía no hay. El primero sale después de la pesada{" del " + _dm(pp) if pp else ""}.</div>'
         st.markdown(h + "</div></div>", unsafe_allow_html=True)
+        for i in inf:
+            if i.get("contenido") and i.get("tipo") == "cierre_ciclo":
+                with st.expander(f"Ver informe de cierre del {_dm(_fecha(str(i.get('fecha_creacion'))))}"):
+                    st.markdown(i["contenido"])
 
     # Clima del campo a lo ancho: con todos los datos para estimar estrés
     try:
@@ -1352,7 +1357,111 @@ def _seccion_seguimiento(lote: Dict, d: Dict, kp: str) -> None:
         _g.dialog_instalaciones(d["id"])
     _seccion_situacion(lote, d, kp)
     _seccion_charlas(lote, d, kp)
+    _seccion_historia(lote, d, kp)
     _analisis_ia(lote, d, kp)
+
+
+_HIST_ICO = {"encierre": "🐂", "entrevista": "📋", "control": "🚦", "charla": "💬", "pesada": "⚖",
+             "entrega": "🚚", "racion": "🔄", "movimiento": "↔"}
+_HIST_COL = {"verde": "#2E9E57", "amarillo": "#F2C200", "rojo": "#D92D20"}
+
+
+def _seccion_historia(lote: Dict, d: Dict, kp: str) -> None:
+    """Todo conectado: cómo arrancó (entrevista), cómo fue cambiando cada
+    área en los controles, y la línea de tiempo con charlas, pesadas,
+    entregas y cambios de ración. De acá sale el informe de cierre."""
+    from . import historia as hi
+    try:
+        cols = hi.evolucion(d["id"], lote)
+        evs = hi.eventos(d["id"], lote)
+    except Exception as e:
+        log.info("ui_movil: historia: %s", e)
+        return
+    st.markdown('<div class="hm"><div class="hm-lbl">HISTORIA DEL LOTE</div></div>', unsafe_allow_html=True)
+    # Evolución de cada área: entrevista y controles semanales
+    if cols:
+        ico_area = {"sanidad": "sanidad", "consumo": "comedero", "ambiente": "corral", "alimento": "alimento"}
+        cab = "".join(f'<th style="text-align:center;font-weight:600">{_e(c["etiqueta"])}</th>' for c in cols[-10:])
+        filas = ""
+        for a, nombre, _ in hi.AREAS:
+            ico = (_SVG + _ICON_SIT[ico_area[a]] + "</svg>").replace('width="26" height="26"', 'width="16" height="16"')
+            celdas = "".join(
+                f'<td style="text-align:center"><span style="display:inline-block;width:14px;height:14px;'
+                f'border-radius:50%;background:{_HIST_COL.get(c.get(a), "#B8B8B8")}"></span></td>' for c in cols[-10:])
+            filas += (f'<tr><td style="white-space:nowrap"><span style="color:var(--hm-est);display:inline-flex;'
+                      f'vertical-align:-3px">{ico}</span> {nombre}</td>{celdas}</tr>')
+        nota = ("" if len(cols) > 1 else
+                '<div class="hm-sub" style="margin-top:6px">Cada control semanal suma una columna: así se ve si '
+                'los puntos débiles se corrigen o se complican.</div>')
+        st.markdown(f'<div class="hm"><div class="hm-card"><div class="hm-sub" style="margin-bottom:6px">'
+                    f'Evolución por área: de la entrevista inicial a cada control</div>'
+                    f'<div style="overflow-x:auto"><table class="hm-tab"><tr><th></th>{cab}</tr>{filas}</table></div>'
+                    f'{nota}</div></div>', unsafe_allow_html=True)
+    # Línea de tiempo
+    def _ev(e):
+        f = e["fecha"]
+        det = f'<div class="hm-sub">{_e(e["detalle"])}</div>' if e.get("detalle") else ""
+        return (f'<div class="hm-ag"><div class="d">{_dm(f)}</div><div>{_HIST_ICO.get(e["tipo"], "•")} '
+                f'{_e(e["titulo"])}{det}</div></div>')
+    if evs:
+        st.markdown('<div class="hm"><div class="hm-card">' + "".join(_ev(e) for e in evs[:6]) + '</div></div>',
+                    unsafe_allow_html=True)
+        if len(evs) > 6:
+            with st.expander(f"Ver toda la historia ({len(evs)} registros)"):
+                st.markdown('<div class="hm">' + "".join(_ev(e) for e in evs[6:]) + '</div>', unsafe_allow_html=True)
+    # Informe de cierre
+    key = f"{kp}_inf_{d['id']}"
+    if st.button("📄 Armar informe del ciclo (borrador con IA)", key=key + "_b", width="stretch"):
+        with st.spinner("Juntando toda la historia del lote y armando el informe…"):
+            st.session_state[key] = _armar_informe(lote, d)
+    txt = st.session_state.get(key)
+    if txt:
+        st.markdown(f'<div class="hm"><div class="hm-card"><div class="hm-lbl">BORRADOR DEL INFORME · '
+                    f'revisalo antes de mandarlo</div></div></div>', unsafe_allow_html=True)
+        st.markdown(txt)
+        st.download_button("Descargar el borrador", txt.encode("utf-8"),
+                           file_name=f"informe_{(lote.get('cliente_nombre') or 'lote').replace(' ', '_')}.md",
+                           key=key + "_dl", width="stretch")
+
+
+def _armar_informe(lote: Dict, d: Dict) -> str:
+    import json as _json
+    import os
+    from . import historia as hi
+    try:
+        key = os.environ.get("ANTHROPIC_API_KEY") or str(st.secrets.get("ANTHROPIC_API_KEY", "") or "")
+    except Exception:
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        return "Falta configurar la clave de la IA (ANTHROPIC_API_KEY) en la app."
+    datos = hi.resumen_ciclo(d["id"], lote, d)
+    texto = None
+    try:
+        from anthropic import Anthropic
+        cli = Anthropic(api_key=key, timeout=90.0)
+        err = None
+        for modelo in ("claude-sonnet-5-5", "claude-sonnet-4-5"):
+            try:
+                r = cli.messages.create(model=modelo, max_tokens=2500, system=hi.SISTEMA_INFORME,
+                                        messages=[{"role": "user",
+                                                   "content": _json.dumps(datos, ensure_ascii=False, default=str)}])
+                texto = "".join(getattr(b, "text", "") for b in r.content).strip()
+                break
+            except Exception as e:
+                err = e
+        if texto is None:
+            return f"No se pudo consultar la IA: {err}"
+    except Exception as e:
+        return f"No se pudo consultar la IA: {e}"
+    try:
+        with db.get_conn() as conn:
+            conn.execute("INSERT INTO informes_lote (lote_id, tipo, periodo_desde, periodo_hasta, contenido, datos, estado) "
+                         "VALUES (?, 'cierre_ciclo', ?, ?, ?, ?, 'borrador')",
+                         (d["id"], datos.get("fecha_encierre"), datos.get("fecha_fin_o_hoy"), texto,
+                          _json.dumps(datos, ensure_ascii=False, default=str)))
+    except Exception as e:
+        log.info("ui_movil: guardar informe: %s", e)
+    return texto
 
 
 _MEDIO_ICO = {"Llamado": "📲", "Visita al campo": "🚗", "WhatsApp": "💬", "En persona (otro lugar)": "🤝"}

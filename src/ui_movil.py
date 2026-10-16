@@ -438,6 +438,29 @@ def _lotes_activos() -> List[Dict]:
     return out
 
 
+@st.cache_data(show_spinner=False)
+def _css_portada() -> str:
+    """Foto del campo detrás del saludo de Inicio, tapada con el verde de HMS
+    a la izquierda para que se lea el texto y abierta a la derecha."""
+    import base64
+    from pathlib import Path
+    f = Path(__file__).resolve().parents[1] / "assets" / "portada.jpg"
+    if not f.exists():
+        return ""
+    b = base64.b64encode(f.read_bytes()).decode()
+    return (
+        "<style>"
+        ".hm-hero{background:"
+        "linear-gradient(90deg,rgba(24,56,34,.97) 0%,rgba(24,56,34,.90) 38%,rgba(24,56,34,.55) 70%,rgba(24,56,34,.25) 100%),"
+        f"url(data:image/jpeg;base64,{b}) center 40%/cover no-repeat !important;}}"
+        ".hm-hero .hm-tile{background:rgba(16,40,24,.55) !important;backdrop-filter:blur(3px);"
+        "-webkit-backdrop-filter:blur(3px)}"
+        "@media (max-width:640px){.hm-hero{background:"
+        "linear-gradient(180deg,rgba(24,56,34,.94) 0%,rgba(24,56,34,.82) 55%,rgba(24,56,34,.70) 100%),"
+        f"url(data:image/jpeg;base64,{b}) 62% 40%/cover no-repeat !important;}}}}"
+        "</style>")
+
+
 def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
     """Pantalla de inicio. `on_abrir_lote(lote_id)` se llama cuando
     Mauricio toca "Ver ficha" en una tarjeta."""
@@ -594,6 +617,7 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         log.info("ui_movil: resumen: %s", e)
         tiles = ""
     lbl_tot = ""
+    st.markdown(_css_portada(), unsafe_allow_html=True)
     st.markdown(
         f'<div class="hm"><div class="hm-top hm-hero">'
         f'<div class="t">{_saludo()}, Mauri</div>'

@@ -1503,10 +1503,16 @@ def _acceso_ok() -> bool:
         st.session_state["_acceso_ok"] = True
         return True
 
-    st.markdown("### 🔒 HMS Nutrición Animal")
-    with st.form("form_acceso"):
-        _clave = st.text_input("Clave de acceso", type="password")
-        _entrar = st.form_submit_button("Entrar")
+    _col_login = st.columns([1, 2.2, 1])[1]
+    with _col_login:
+        if Path("assets/banner.jpg").exists():
+            st.image("assets/banner.jpg", width="stretch")
+            st.markdown("#### Entrar al sistema")
+        else:
+            st.markdown("### 🔒 HMS Nutrición Animal")
+        with st.form("form_acceso"):
+            _clave = st.text_input("Clave de acceso", type="password")
+            _entrar = st.form_submit_button("Entrar")
     if _entrar:
         try:
             _salt_hex, _hash_hex = _hash_guardado.split("$", 1)
@@ -1740,6 +1746,39 @@ elif _logo_path_hdr.exists():
         'object-fit:contain;" />'
     )
 
+# Franja de arriba: foto del campo de fondo, logo blanco y clima de Catriló.
+_css_franja_hdr = ""
+_logo_franja_hdr = _logo_html_hdr.replace("height:30px", "height:64px").replace(
+    "max-width:110px", "max-width:240px").replace("height:60px", "height:40px").replace(
+    "max-width:220px", "max-width:150px")
+try:
+    import base64 as _b64_fr
+    _fp = Path("assets/portada.jpg")
+    _lb = Path("assets/logo_blanco.png")
+    if _fp.exists():
+        _foto = _b64_fr.b64encode(_fp.read_bytes()).decode()
+        _css_franja_hdr = (
+            "<style>.hms-franja{border-radius:16px;color:#fff;background:"
+            "linear-gradient(90deg,rgba(20,48,29,.92) 0%,rgba(20,48,29,.72) 35%,rgba(20,48,29,.45) 65%,rgba(20,48,29,.62) 100%),"
+            f"url(data:image/jpeg;base64,{_foto}) center 38%/cover no-repeat}}"
+            ".hms-franja .hm-hc{background:rgba(255,255,255,.14) !important;color:#fff;"
+            "backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}"
+            ".hms-franja .hm-hc:hover,.hms-franja .hm-hc:focus{background:rgba(255,255,255,.26) !important}"
+            ".hms-franja .hm-hc-d,.hms-franja .hm-hc-m{opacity:.85}"
+            ".hms-franja .hm-ha{border-right-color:rgba(255,255,255,.35) !important;color:#fff}"
+            ".hms-franja .hm-hv{color:#fff;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.4)}"
+            "@media (max-width:760px){.hms-franja{background:"
+            "linear-gradient(180deg,rgba(20,48,29,.88) 0%,rgba(20,48,29,.70) 100%),"
+            f"url(data:image/jpeg;base64,{_foto}) 60% 38%/cover no-repeat}}}}"
+            "</style>")
+        if _lb.exists():
+            _logo_franja_hdr = (
+                '<img src="data:image/png;base64,' + _b64_fr.b64encode(_lb.read_bytes()).decode()
+                + '" style="height:64px;width:auto;max-width:240px;object-fit:contain;'
+                  'filter:drop-shadow(0 1px 3px rgba(0,0,0,.35))"/>')
+except Exception:
+    pass
+
 try:
     from src.ui_movil import clima_catrilo_header as _clima_hdr_fn
     _clima_hdr = _clima_hdr_fn()
@@ -1756,12 +1795,13 @@ st.markdown(
     '@media (max-width:640px){.block-container{padding-left:.8rem !important;'
     'padding-right:.8rem !important;}}'
     '</style>'
-    f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;'
-    f'gap:10px;padding:6px 0 10px;">'
+    + _css_franja_hdr +
+    f'<div class="hms-franja" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;'
+    f'gap:10px;padding:14px 18px;margin-bottom:12px;">'
     f'<div style="display:flex;align-items:center;gap:10px;">'
-    f'{_logo_html_hdr.replace("height:30px", "height:64px").replace("max-width:110px", "max-width:240px").replace("height:60px", "height:40px").replace("max-width:220px", "max-width:150px")}'
+    f'{_logo_franja_hdr}'
     f'</div>'
-    f'{_clima_hdr or ("<div style=" + chr(34) + "font-size:12px;color:#8a8f98;text-align:right;" + chr(34) + ">" + _fecha_es_hdr + "</div>")}'
+    f'{_clima_hdr or ("<div style=" + chr(34) + "font-size:12px;color:#fff;text-align:right;" + chr(34) + ">" + _fecha_es_hdr + "</div>")}'
     f'</div>',
     unsafe_allow_html=True,
 )

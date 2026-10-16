@@ -617,7 +617,6 @@ def render_inicio(on_abrir_lote, kp: str = "hm") -> None:
         log.info("ui_movil: resumen: %s", e)
         tiles = ""
     lbl_tot = ""
-    st.markdown(_css_portada(), unsafe_allow_html=True)
     st.markdown(
         f'<div class="hm"><div class="hm-top hm-hero">'
         f'<div class="t">{_saludo()}, Mauri</div>'

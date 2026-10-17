@@ -1802,13 +1802,16 @@ try:
             "linear-gradient(90deg,rgba(20,48,29,.80) 0%,rgba(20,48,29,.30) 30%,rgba(20,48,29,.05) 55%,rgba(20,48,29,.45) 100%),"
             "linear-gradient(0deg,rgba(20,48,29,.35) 0%,rgba(20,48,29,0) 40%),"
             f"url(data:image/jpeg;base64,{_foto}) center 40%/cover no-repeat}}"
-            # La foto corta a la altura de las patas de los animales (en la
-            # imagen las patas están al 57 % del alto). El alto de la franja
-            # sigue al ancho de la pantalla para que el corte quede siempre ahí.
-            "@media (min-width:761px){.hms-franja{--fh:max(330px,22.6vw);box-sizing:border-box;"
-            "min-height:0;height:var(--fh);"
-            "background-size:auto,auto,100% auto !important;"
-            "background-position:0 0,0 0,center min(0px,calc(var(--fh) - 32.8vw)) !important}}"
+            # Foto achicada para que entre entera (del alambrado a las patas)
+            # en una franja baja: se apoya a la derecha y a la izquierda se
+            # funde en verde oscuro, donde van el logo y las pestañas.
+            # En la imagen el alambrado está al 22 % del alto y las patas al 57 %.
+            "@media (min-width:761px){.hms-franja{--fh:max(290px,16.5vw);box-sizing:border-box;"
+            "min-height:0;height:var(--fh);background:"
+            "linear-gradient(90deg,#14301D 0,#14301D calc(100% - var(--fh) * 4.6),rgba(20,48,29,0) calc(100% - var(--fh) * 4.6 + 160px)),"
+            "linear-gradient(90deg,rgba(20,48,29,.70) 0%,rgba(20,48,29,.25) 35%,rgba(20,48,29,.05) 60%,rgba(20,48,29,.45) 100%),"
+            "linear-gradient(0deg,rgba(20,48,29,.30) 0%,rgba(20,48,29,0) 35%),"
+            f"#14301D url(data:image/jpeg;base64,{_foto}) right calc(var(--fh) * -0.53)/auto calc(var(--fh) * 2.57) no-repeat !important}}}}"
             # Pestañas principales (Inicio, Clientes, Más) metidas abajo de la foto
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"]'
             "{margin-top:-104px;position:relative;z-index:3}"

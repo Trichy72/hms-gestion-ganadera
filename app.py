@@ -1802,7 +1802,13 @@ try:
             "linear-gradient(90deg,rgba(20,48,29,.80) 0%,rgba(20,48,29,.30) 30%,rgba(20,48,29,.05) 55%,rgba(20,48,29,.45) 100%),"
             "linear-gradient(0deg,rgba(20,48,29,.35) 0%,rgba(20,48,29,0) 40%),"
             f"url(data:image/jpeg;base64,{_foto}) center 40%/cover no-repeat}}"
-            "@media (min-width:1500px){.hms-franja{min-height:390px}}"
+            # La foto corta a la altura de las patas de los animales (en la
+            # imagen las patas están al 57 % del alto). El alto de la franja
+            # sigue al ancho de la pantalla para que el corte quede siempre ahí.
+            "@media (min-width:761px){.hms-franja{--fh:max(330px,22.6vw);box-sizing:border-box;"
+            "min-height:0;height:var(--fh);"
+            "background-size:auto,auto,100% auto !important;"
+            "background-position:0 0,0 0,center min(0px,calc(var(--fh) - 32.8vw)) !important}}"
             # Pestañas principales (Inicio, Clientes, Más) metidas abajo de la foto
             '[data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]>[data-testid="stTabs"]'
             "{margin-top:-104px;position:relative;z-index:3}"
@@ -1839,7 +1845,7 @@ try:
             ".hms-franja .hm-hc-d,.hms-franja .hm-hc-m{opacity:.85}"
             ".hms-franja .hm-ha{border-right-color:rgba(255,255,255,.35) !important;color:#fff}"
             ".hms-franja .hm-hv{color:#fff;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.4)}"
-            "@media (max-width:760px){.hms-franja{min-height:0;border-radius:0 0 14px 14px;"
+            "@media (max-width:760px){.hms-franja{min-height:0;height:auto;border-radius:0 0 14px 14px;"
             "margin-top:-4.6rem !important;padding:calc(4.6rem + 2px) calc(var(--hp) + .6rem) 16px !important;background:"
             "linear-gradient(180deg,rgba(20,48,29,.75) 0%,rgba(20,48,29,.25) 45%,rgba(20,48,29,.80) 100%),"
             f"url(data:image/jpeg;base64,{_foto}) 60% 30%/cover no-repeat}}"

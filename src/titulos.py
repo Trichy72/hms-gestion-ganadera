@@ -93,15 +93,19 @@ def con_iconos(body):
 CSS = """
 .hm-lbl{display:flex !important;align-items:center;gap:10px;margin:30px 0 12px !important;
   font-family:'Barlow Condensed',sans-serif;font-size:20px !important;font-weight:700;letter-spacing:.6px !important;
-  color:var(--hm-txt) !important;line-height:1.1}
-.hm-lbl::after{content:"";flex:1;height:1px;background:var(--hm-line);margin-left:4px;min-width:20px}
+  color:#1B3E27 !important;line-height:1.1;
+  background:linear-gradient(90deg,rgba(79,122,31,.16),rgba(79,122,31,.05));
+  border:1px solid rgba(79,122,31,.22);border-left:5px solid #4F7A1F;border-radius:10px;
+  padding:7px 14px 7px 9px}
 .hm-lbl-i{width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
-  flex-shrink:0;background:rgba(79,122,31,.13);color:#2F6B1F}
+  flex-shrink:0;background:#fff;color:#2F6B1F;box-shadow:0 1px 2px rgba(20,48,29,.15)}
 .hm-lbl-x{font-family:'Source Sans 3',system-ui,sans-serif;font-size:13px;font-weight:600;letter-spacing:.2px;
-  color:var(--hm-sub);text-transform:none}
-.hm-card .hm-lbl{margin:0 0 10px !important;font-size:17px !important}
-.hm-card .hm-lbl::after{display:none}
-@media (prefers-color-scheme: dark){.hm-lbl-i{background:rgba(139,197,63,.16);color:#A7D46A}}
+  color:var(--hm-sub);text-transform:none;margin-left:auto;text-align:right}
+.hm-card .hm-lbl{margin:0 0 10px !important;font-size:17px !important;padding:5px 12px 5px 8px}
+.hm-card .hm-lbl .hm-lbl-i{width:26px;height:26px}
+@media (prefers-color-scheme: dark){.hm-lbl{color:#E8EDE9 !important;background:linear-gradient(90deg,rgba(139,197,63,.18),rgba(139,197,63,.05));
+  border-color:rgba(139,197,63,.25);border-left-color:#8BC53F}
+  .hm-lbl-i{background:#1C231E;color:#A7D46A}}
 @media (max-width:640px){.hm-lbl{font-size:18px !important;margin:24px 0 10px !important}
   .hm-lbl-i{width:28px;height:28px}.hm-lbl-x{font-size:12px}}
 """

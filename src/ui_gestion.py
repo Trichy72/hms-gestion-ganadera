@@ -10,7 +10,22 @@ from __future__ import annotations
 from datetime import date
 from typing import Dict, List, Optional
 
-import streamlit as st
+import streamlit as _st_real
+
+from . import titulos as _titulos
+
+
+class _StConTitulos:
+    """Igual que streamlit, pero los títulos de sección salen con su ícono."""
+
+    def __getattr__(self, nombre):
+        return getattr(_st_real, nombre)
+
+    def markdown(self, body, *a, **k):
+        return _st_real.markdown(_titulos.con_iconos(body), *a, **k)
+
+
+st = _StConTitulos()
 
 from . import database as db
 from . import ui_movil as um

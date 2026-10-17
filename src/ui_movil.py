@@ -19,7 +19,22 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
-import streamlit as st
+import streamlit as _st_real
+
+from . import titulos as _titulos
+
+
+class _StConTitulos:
+    """Igual que streamlit, pero los títulos de sección salen con su ícono."""
+
+    def __getattr__(self, nombre):
+        return getattr(_st_real, nombre)
+
+    def markdown(self, body, *a, **k):
+        return _st_real.markdown(_titulos.con_iconos(body), *a, **k)
+
+
+st = _StConTitulos()
 
 from . import database as db
 
@@ -415,7 +430,8 @@ _CSS = f"""
 
 
 def estilos() -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
+    from . import titulos as _tit
+    st.markdown(_CSS.replace("</style>", _tit.CSS + "</style>"), unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------
@@ -816,8 +832,8 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
     if c0.button("＋ Agregar actividad", key=f"{key}_add", type="primary", width="stretch"):
         from . import ui_gestion as _g
         _g.dialog_actividad()
-    c1.markdown(f'<div class="hm"><div class="hm-lbl" style="margin:0">CALENDARIO · '
-                f'{nombres[m - 1].upper()} {y}</div></div>', unsafe_allow_html=True)
+    c1.markdown(_titulos.con_iconos(f'<div class="hm"><div class="hm-lbl" style="margin:0 !important">CALENDARIO · '
+                f'{nombres[m - 1].upper()} {y}</div></div>'), unsafe_allow_html=True)
     if c2.button("◀ Anterior", key=f"{key}_a", width="stretch"):
         st.session_state[key] = off - 1
         st.rerun()

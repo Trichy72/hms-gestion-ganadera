@@ -828,12 +828,13 @@ def _calendario(datos: List[Dict], hoy: date, kp: str) -> None:
     nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
                "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
+    # Título a todo el ancho, como los demás; los botones van abajo
+    st.markdown(f'<div class="hm"><div class="hm-lbl">CALENDARIO · '
+                f'{nombres[m - 1].upper()} {y}</div></div>', unsafe_allow_html=True)
     c1, c0, c2, c3, c4 = st.columns([2.4, 1.3, 1, 1, 1], vertical_alignment="center")
     if c0.button("＋ Agregar actividad", key=f"{key}_add", type="primary", width="stretch"):
         from . import ui_gestion as _g
         _g.dialog_actividad()
-    c1.markdown(_titulos.con_iconos(f'<div class="hm"><div class="hm-lbl" style="margin:0 !important">CALENDARIO · '
-                f'{nombres[m - 1].upper()} {y}</div></div>'), unsafe_allow_html=True)
     if c2.button("◀ Anterior", key=f"{key}_a", width="stretch"):
         st.session_state[key] = off - 1
         st.rerun()
